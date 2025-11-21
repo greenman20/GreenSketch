@@ -289,6 +289,9 @@
                 <p>• Зелёная линия - ось Y</p>
                 <p>• Синяя линия - ось Z</p>
                 <p>• Голубой круг - привязка к точке</p>
+                <p>• ← - блокировка оси X</p>
+                <p>• ↑ - блокировка оси Y</p>
+                <p>• → ↓ - блокировка оси Z</p>
                 <p></p>
                 <p><strong>Импорт файлов:</strong></p>
                 <p>• SKP (SketchUp)</p>
@@ -370,6 +373,7 @@
                 this.currentInference = null;
                 this.snapDistance = 0.5; // Distance for snapping
                 this.axisSnapAngle = 5; // Degrees for axis snapping
+                this.lockedAxis = null; // 'x', 'y', 'z' or null
                 
                 // Initialize loaders
                 this.objLoader = new THREE.OBJLoader();
@@ -528,6 +532,21 @@
                         this.cancelDrawing();
                     } else {
                         this.deselectObject();
+                    }
+                } else if (event.key === 'ArrowLeft') {
+                    if (this.currentTool === 'pencil' && this.drawingPoints.length > 0) {
+                        this.lockedAxis = this.lockedAxis === 'x' ? null : 'x';
+                        console.log('Ось заблокирована: X (красная)');
+                    }
+                } else if (event.key === 'ArrowUp') {
+                    if (this.currentTool === 'pencil' && this.drawingPoints.length > 0) {
+                        this.lockedAxis = this.lockedAxis === 'y' ? null : 'y';
+                        console.log('Ось заблокирована: Y (зелёная)');
+                    }
+                } else if (event.key === 'ArrowRight' || event.key === 'ArrowDown') {
+                    if (this.currentTool === 'pencil' && this.drawingPoints.length > 0) {
+                        this.lockedAxis = this.lockedAxis === 'z' ? null : 'z';
+                        console.log('Ось заблокирована: Z (синяя)');
                     }
                 }
             }
@@ -815,32 +834,89 @@
                 }
                 
                 try {
-                    // Get average Y position
-                    const avgY = this.drawingPoints.reduce((sum, p) => sum + p.y, 0) / this.drawingPoints.length;
+                    // Determine the plane of the shape (XY, XZ, or YZ)
+                    const points = this.drawingPoints;
                     
-                    // Create 2D points for shape (project to XZ plane)
-                    const points2D = this.drawingPoints.map(p => new THREE.Vector2(p.x, p.z));
+                    // Check if all points are roughly on the same plane
+                    const avgY = points.reduce((sum, p) => sum + p.y, 0) / points.length;
+                    const avgX = points.reduce((sum, p) => sum + p.x, 0) / points.length;
+                    const avgZ = points.reduce((sum, p) => sum + p.z, 0) / points.length;
                     
-                    // Create shape
-                    const shape = new THREE.Shape(points2D);
+                    // Check variance to determine plane
+                    const yVar = Math.max(...points.map(p => Math.abs(p.y - avgY)));
+                    const xVar = Math.max(...points.map(p => Math.abs(p.x - avgX)));
+                    const zVar = Math.max(...points.map(p => Math.abs(p.z - avgZ)));
                     
-                    // Extrude for better visibility
-                    const extrudeSettings = {
-                        depth: 0.1,
-                        bevelEnabled: false
-                    };
-                    const geometry = new THREE.ExtrudeGeometry(shape, extrudeSettings);
+                    let geometry, mesh;
                     
-                    const material = new THREE.MeshStandardMaterial({ 
-                        color: 0x4a9eff,
-                        side: THREE.DoubleSide,
-                        roughness: 0.5,
-                        metalness: 0.3
-                    });
+                    // XZ plane (horizontal - most common)
+                    if (yVar < 0.1) {
+                        const points2D = points.map(p => new THREE.Vector2(p.x, p.z));
+                        const shape = new THREE.Shape(points2D);
+                        geometry = new THREE.ShapeGeometry(shape);
+                        
+                        const material = new THREE.MeshStandardMaterial({ 
+                            color: 0x4a9eff,
+                            side: THREE.DoubleSide,
+                            roughness: 0.5,
+                            metalness: 0.3
+                        });
+                        
+                        mesh = new THREE.Mesh(geometry, material);
+                        mesh.rotation.x = -Math.PI / 2;
+                        mesh.position.set(0, avgY, 0);
+                    }
+                    // XY plane (vertical, facing Z)
+                    else if (zVar < 0.1) {
+                        const points2D = points.map(p => new THREE.Vector2(p.x, p.y));
+                        const shape = new THREE.Shape(points2D);
+                        geometry = new THREE.ShapeGeometry(shape);
+                        
+                        const material = new THREE.MeshStandardMaterial({ 
+                            color: 0x4a9eff,
+                            side: THREE.DoubleSide,
+                            roughness: 0.5,
+                            metalness: 0.3
+                        });
+                        
+                        mesh = new THREE.Mesh(geometry, material);
+                        mesh.position.set(0, 0, avgZ);
+                    }
+                    // YZ plane (vertical, facing X)
+                    else if (xVar < 0.1) {
+                        const points2D = points.map(p => new THREE.Vector2(p.z, p.y));
+                        const shape = new THREE.Shape(points2D);
+                        geometry = new THREE.ShapeGeometry(shape);
+                        
+                        const material = new THREE.MeshStandardMaterial({ 
+                            color: 0x4a9eff,
+                            side: THREE.DoubleSide,
+                            roughness: 0.5,
+                            metalness: 0.3
+                        });
+                        
+                        mesh = new THREE.Mesh(geometry, material);
+                        mesh.rotation.y = Math.PI / 2;
+                        mesh.position.set(avgX, 0, 0);
+                    }
+                    // Non-planar - use best fit
+                    else {
+                        const points2D = points.map(p => new THREE.Vector2(p.x, p.z));
+                        const shape = new THREE.Shape(points2D);
+                        geometry = new THREE.ShapeGeometry(shape);
+                        
+                        const material = new THREE.MeshStandardMaterial({ 
+                            color: 0x4a9eff,
+                            side: THREE.DoubleSide,
+                            roughness: 0.5,
+                            metalness: 0.3
+                        });
+                        
+                        mesh = new THREE.Mesh(geometry, material);
+                        mesh.rotation.x = -Math.PI / 2;
+                        mesh.position.set(0, avgY, 0);
+                    }
                     
-                    const mesh = new THREE.Mesh(geometry, material);
-                    mesh.rotation.x = -Math.PI / 2;
-                    mesh.position.y = avgY;
                     mesh.castShadow = true;
                     mesh.receiveShadow = true;
                     mesh.userData.type = 'Грань';
@@ -878,6 +954,9 @@
                 
                 // Clear inference
                 this.clearInferenceLines();
+                
+                // Reset locked axis
+                this.lockedAxis = null;
             }
 
             // ============ INFERENCE SYSTEM (like SketchUp) ============
@@ -886,19 +965,31 @@
                 this.raycaster.setFromCamera(this.mouse, this.camera);
                 const groundPlane = this.scene.children.find(child => child.userData.isGround);
                 const intersectables = [groundPlane, ...this.objects];
-                const intersects = this.raycaster.intersectObjects(intersectables);
+                const intersects = this.raycaster.intersectObjects(intersectables, true);
                 
                 if (intersects.length === 0) return null;
                 
                 let point = intersects[0].point.clone();
                 
+                // Check for vertex snapping first
+                const vertexSnap = this.snapToVertices(point);
+                if (vertexSnap) {
+                    return vertexSnap;
+                }
+                
                 // If we have a previous point, try axis snapping
                 if (this.drawingPoints.length > 0) {
                     const lastPoint = this.drawingPoints[this.drawingPoints.length - 1];
-                    const snappedToAxis = this.snapToAxis(point, lastPoint);
-                    if (snappedToAxis) {
-                        point = snappedToAxis.point;
-                        this.currentInference = snappedToAxis.inference;
+                    
+                    // If axis is locked, force that axis
+                    if (this.lockedAxis) {
+                        point = this.forceAxisLock(point, lastPoint, this.lockedAxis);
+                    } else {
+                        const snappedToAxis = this.snapToAxis(point, lastPoint);
+                        if (snappedToAxis) {
+                            point = snappedToAxis.point;
+                            this.currentInference = snappedToAxis.inference;
+                        }
                     }
                 }
                 
@@ -920,6 +1011,24 @@
                 
                 const lastPoint = this.drawingPoints[this.drawingPoints.length - 1];
                 
+                // Show locked axis
+                if (this.lockedAxis) {
+                    let color, label;
+                    if (this.lockedAxis === 'x') {
+                        color = 0xff0000;
+                        label = '\u0417\u0410\u0411\u041b\u041e\u041a\u0418\u0420\u041e\u0412\u0410\u041d\u041e: \u041e\u0441\u044c X';
+                    } else if (this.lockedAxis === 'y') {
+                        color = 0x00ff00;
+                        label = '\u0417\u0410\u0411\u041b\u041e\u041a\u0418\u0420\u041e\u0412\u0410\u041d\u041e: \u041e\u0441\u044c Y';
+                    } else if (this.lockedAxis === 'z') {
+                        color = 0x0000ff;
+                        label = 'ЗАБЛОКИРОВАНО: Ось Z';
+                    }
+                    this.drawInferenceLine(lastPoint, point, color);
+                    this.showInferenceTooltip(screenX, screenY, label, 'on-axis');
+                    return;
+                }
+                
                 // Check for axis alignment
                 const axisInfo = this.checkAxisAlignment(point, lastPoint);
                 if (axisInfo) {
@@ -935,7 +1044,7 @@
                     this.drawSnapIndicator(snapInfo.point);
                     this.showInferenceTooltip(screenX, screenY, snapInfo.label, snapInfo.type);
                 }
-            }
+            }"}, {"old_string": "            checkPointSnap(point) {\n                // Check distance to existing drawing points\n                for (let i = 0; i < this.drawingPoints.length; i++) {\n                    const dist = point.distanceTo(this.drawingPoints[i]);\n                    if (dist < this.snapDistance) {\n                        if (i === 0 && this.drawingPoints.length > 2) {\n                            return { point: this.drawingPoints[i], label: '\u041d\u0430\u0447\u0430\u043b\u044c\u043d\u0430\u044f \u0442\u043e\u0447\u043a\u0430', type: 'endpoint' };\n                        }\n                        return { point: this.drawingPoints[i], label: '\u0422\u043e\u0447\u043a\u0430', type: 'endpoint' };\n                    }\n                }\n                \n                return null;\n            }", "new_string": "            checkPointSnap(point) {\n                // Check distance to existing drawing points\n                for (let i = 0; i < this.drawingPoints.length; i++) {\n                    const dist = point.distanceTo(this.drawingPoints[i]);\n                    if (dist < this.snapDistance) {\n                        if (i === 0 && this.drawingPoints.length > 2) {\n                            return { point: this.drawingPoints[i], label: '\u041d\u0430\u0447\u0430\u043b\u044c\u043d\u0430\u044f \u0442\u043e\u0447\u043a\u0430', type: 'endpoint' };\n                        }\n                        return { point: this.drawingPoints[i], label: '\u0422\u043e\u0447\u043a\u0430', type: 'endpoint' };\n                    }\n                }\n                \n                // Check distance to vertices of existing objects\n                for (const obj of this.objects) {\n                    const vertices = this.extractVertices(obj);\n                    for (const vertex of vertices) {\n                        const dist = point.distanceTo(vertex);\n                        if (dist < this.snapDistance) {\n                            return { point: vertex, label: '\u0412\u0435\u0440\u0448\u0438\u043d\u0430 \u043e\u0431\u044a\u0435\u043a\u0442\u0430', type: 'endpoint' };\n                        }\n                    }\n                }\n                \n                return null;\n            }"}]
 
             snapToAxis(point, fromPoint) {
                 const delta = new THREE.Vector3().subVectors(point, fromPoint);
@@ -1067,6 +1176,74 @@
             hideInferenceTooltip() {
                 const tooltip = document.getElementById('inference-tooltip');
                 tooltip.classList.remove('visible');
+            }
+
+            forceAxisLock(point, fromPoint, axis) {
+                // Force point to specific axis
+                if (axis === 'x') {
+                    return new THREE.Vector3(point.x, fromPoint.y, fromPoint.z);
+                } else if (axis === 'y') {
+                    return new THREE.Vector3(fromPoint.x, point.y, fromPoint.z);
+                } else if (axis === 'z') {
+                    return new THREE.Vector3(fromPoint.x, fromPoint.y, point.z);
+                }
+                return point;
+            }
+
+            snapToVertices(point) {
+                const snapThreshold = 0.5;
+                
+                // Get all vertices from all objects
+                for (const obj of this.objects) {
+                    const vertices = this.extractVertices(obj);
+                    
+                    for (const vertex of vertices) {
+                        const distance = point.distanceTo(vertex);
+                        if (distance < snapThreshold) {
+                            return vertex.clone();
+                        }
+                    }
+                }
+                
+                return null;
+            }
+
+            extractVertices(object) {
+                const vertices = [];
+                
+                object.traverse((child) => {
+                    if (child instanceof THREE.Mesh && child.geometry) {
+                        const geometry = child.geometry;
+                        
+                        // Get position attribute
+                        if (geometry.attributes && geometry.attributes.position) {
+                            const positions = geometry.attributes.position;
+                            const worldMatrix = child.matrixWorld;
+                            
+                            // Extract unique vertices
+                            const uniqueVertices = new Map();
+                            
+                            for (let i = 0; i < positions.count; i++) {
+                                const vertex = new THREE.Vector3(
+                                    positions.getX(i),
+                                    positions.getY(i),
+                                    positions.getZ(i)
+                                );
+                                
+                                // Transform to world coordinates
+                                vertex.applyMatrix4(worldMatrix);
+                                
+                                // Round to avoid duplicates
+                                const key = `${vertex.x.toFixed(2)},${vertex.y.toFixed(2)},${vertex.z.toFixed(2)}`;
+                                uniqueVertices.set(key, vertex);
+                            }
+                            
+                            vertices.push(...uniqueVertices.values());
+                        }
+                    }
+                });
+                
+                return vertices;
             }
 
             deleteSelected() {
