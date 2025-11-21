@@ -579,17 +579,17 @@
                 } else if (event.key === 'ArrowLeft') {
                     if (this.currentTool === 'pencil' && this.drawingPoints.length > 0) {
                         this.lockedAxis = this.lockedAxis === 'x' ? null : 'x';
-                        console.log('Ось заблокирована: X (красная →)');
+                        console.log('Ось заблокирована: X (красная)');
                     }
-                } else if (event.key === 'ArrowRight') {
+                } else if (event.key === 'ArrowUp') {
                     if (this.currentTool === 'pencil' && this.drawingPoints.length > 0) {
                         this.lockedAxis = this.lockedAxis === 'y' ? null : 'y';
-                        console.log('Ось заблокирована: Y (зелёная ↔)');
+                        console.log('Ось заблокирована: Y (зелёная)');
                     }
-                } else if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
+                } else if (event.key === 'ArrowRight' || event.key === 'ArrowDown') {
                     if (this.currentTool === 'pencil' && this.drawingPoints.length > 0) {
                         this.lockedAxis = this.lockedAxis === 'z' ? null : 'z';
-                        console.log('Ось заблокирована: Z (синяя ↑ ВЕРТИКАЛЬ)');
+                        console.log('Ось заблокирована: Z (синяя)');
                     }
                 }
             }
@@ -1116,7 +1116,7 @@
                         label = '\u0417\u0410\u0411\u041b\u041e\u041a\u0418\u0420\u041e\u0412\u0410\u041d\u041e: \u041e\u0441\u044c Y';
                     } else if (this.lockedAxis === 'z') {
                         color = 0x0000ff;
-                        label = 'ЗАБЛОКИРОВАНО: Ось Z (синяя вверх)';
+                        label = 'ЗАБЛОКИРОВАНО: Ось Z';
                     }
                     this.drawInferenceLine(lastPoint, point, color);
                     this.showInferenceTooltip(screenX, screenY, label, 'on-axis');
