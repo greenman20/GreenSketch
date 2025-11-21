@@ -292,14 +292,13 @@
                 <p>• C - замкнуть форму</p>
                 <p>• Клик на первую точку - замкнуть</p>
                 <p></p>
-                <p><strong>Умные подсказки:</strong></p>
-                <p>• Красная линия - ось X</p>
-                <p>• Зелёная линия - ось Y</p>
-                <p>• Синяя линия - ось Z</p>
-                <p>• Голубой круг - привязка к точке</p>
-                <p>• ← - блокировка оси X</p>
-                <p>• ↑ - блокировка оси Y</p>
-                <p>• → ↓ - блокировка оси Z</p>
+                <p><strong>Умные подсказки (как в SketchUp):</strong></p>
+                <p>• Красная - ось X (→)</p>
+                <p>• Зелёная - ось Y (↔)</p>
+                <p>• Синяя - ось Z (↑ вертикаль)</p>
+                <p>• Голубой круг - привязка</p>
+                <p>• ← → - блокировка X/Y</p>
+                <p>• ↑ ↓ - блокировка Z (вверх)</p>
                 <p></p>
                 <p><strong>Импорт файлов:</strong></p>
                 <p>• SKP (SketchUp)</p>
@@ -878,87 +877,71 @@
                 }
                 
                 try {
-                    // Determine the plane of the shape (XY, XZ, or YZ)
                     const points = this.drawingPoints;
                     
-                    // Check if all points are roughly on the same plane
-                    const avgY = points.reduce((sum, p) => sum + p.y, 0) / points.length;
+                    // Calculate average position and variance for each axis
                     const avgX = points.reduce((sum, p) => sum + p.x, 0) / points.length;
+                    const avgY = points.reduce((sum, p) => sum + p.y, 0) / points.length;
                     const avgZ = points.reduce((sum, p) => sum + p.z, 0) / points.length;
                     
-                    // Check variance to determine plane
-                    const yVar = Math.max(...points.map(p => Math.abs(p.y - avgY)));
                     const xVar = Math.max(...points.map(p => Math.abs(p.x - avgX)));
+                    const yVar = Math.max(...points.map(p => Math.abs(p.y - avgY)));
                     const zVar = Math.max(...points.map(p => Math.abs(p.z - avgZ)));
                     
-                    let geometry, mesh;
+                    console.log('Variance:', { xVar, yVar, zVar });
+                    console.log('Points:', points);
                     
-                    // XZ plane (horizontal - most common)
-                    if (yVar < 0.1) {
+                    let geometry, mesh;
+                    const material = new THREE.MeshStandardMaterial({ 
+                        color: 0x4a9eff,
+                        side: THREE.DoubleSide,
+                        roughness: 0.5,
+                        metalness: 0.3
+                    });
+                    
+                    // XZ plane (horizontal - floor/ceiling)
+                    if (yVar < 0.5) {
+                        console.log('Creating horizontal face (XZ plane)');
                         const points2D = points.map(p => new THREE.Vector2(p.x, p.z));
                         const shape = new THREE.Shape(points2D);
                         geometry = new THREE.ShapeGeometry(shape);
                         
-                        const material = new THREE.MeshStandardMaterial({ 
-                            color: 0x4a9eff,
-                            side: THREE.DoubleSide,
-                            roughness: 0.5,
-                            metalness: 0.3
-                        });
-                        
                         mesh = new THREE.Mesh(geometry, material);
                         mesh.rotation.x = -Math.PI / 2;
-                        mesh.position.set(0, avgY, 0);
+                        mesh.position.y = avgY;
                     }
-                    // XY plane (vertical, facing Z)
-                    else if (zVar < 0.1) {
+                    // XY plane (vertical wall, facing Z direction)
+                    else if (zVar < 0.5) {
+                        console.log('Creating vertical face facing Z (XY plane)');
                         const points2D = points.map(p => new THREE.Vector2(p.x, p.y));
                         const shape = new THREE.Shape(points2D);
                         geometry = new THREE.ShapeGeometry(shape);
                         
-                        const material = new THREE.MeshStandardMaterial({ 
-                            color: 0x4a9eff,
-                            side: THREE.DoubleSide,
-                            roughness: 0.5,
-                            metalness: 0.3
-                        });
-                        
                         mesh = new THREE.Mesh(geometry, material);
-                        mesh.position.set(0, 0, avgZ);
+                        // No rotation needed for XY plane
+                        mesh.position.z = avgZ;
                     }
-                    // YZ plane (vertical, facing X)
-                    else if (xVar < 0.1) {
+                    // YZ plane (vertical wall, facing X direction)
+                    else if (xVar < 0.5) {
+                        console.log('Creating vertical face facing X (YZ plane)');
                         const points2D = points.map(p => new THREE.Vector2(p.z, p.y));
                         const shape = new THREE.Shape(points2D);
                         geometry = new THREE.ShapeGeometry(shape);
                         
-                        const material = new THREE.MeshStandardMaterial({ 
-                            color: 0x4a9eff,
-                            side: THREE.DoubleSide,
-                            roughness: 0.5,
-                            metalness: 0.3
-                        });
-                        
                         mesh = new THREE.Mesh(geometry, material);
                         mesh.rotation.y = Math.PI / 2;
-                        mesh.position.set(avgX, 0, 0);
+                        mesh.position.x = avgX;
                     }
-                    // Non-planar - use best fit
+                    // Default: try horizontal
                     else {
+                        console.log('Non-planar, defaulting to horizontal');
                         const points2D = points.map(p => new THREE.Vector2(p.x, p.z));
                         const shape = new THREE.Shape(points2D);
                         geometry = new THREE.ShapeGeometry(shape);
                         
-                        const material = new THREE.MeshStandardMaterial({ 
-                            color: 0x4a9eff,
-                            side: THREE.DoubleSide,
-                            roughness: 0.5,
-                            metalness: 0.3
-                        });
-                        
                         mesh = new THREE.Mesh(geometry, material);
                         mesh.rotation.x = -Math.PI / 2;
-                        mesh.position.set(0, avgY, 0);
+                        mesh.position.y = avgY;
                     }
                     
                     mesh.castShadow = true;
@@ -969,10 +952,10 @@
                     this.scene.add(mesh);
                     this.objects.push(mesh);
                     
-                    console.log('Грань создана успешно!');
+                    console.log('Грань создана! Позиция:', mesh.position);
                 } catch (error) {
                     console.error('Ошибка создания грани:', error);
-                    alert('Ошибка создания грани. Попробуйте нарисовать более простую форму.');
+                    alert('Ошибка создания грани: ' + error.message);
                 }
             }
 
