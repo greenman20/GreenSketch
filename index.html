@@ -250,7 +250,9 @@
                 <p>• Delete - удалить</p>
                 <p>• V - инструмент выбора</p>
                 <p>• L - Карандаш (рисование)</p>
-                <p>• Enter - завершить рисование</p>
+                <p>• Enter - завершить и создать грань</p>
+                <p>• C - замкнуть форму</p>
+                <p>• Клик на первую точку - замкнуть</p>
                 <p></p>
                 <p><strong>Импорт файлов:</strong></p>
                 <p>• SKP (SketchUp)</p>
@@ -465,6 +467,11 @@
                     this.setTool('select');
                 } else if (event.key === 'l' || event.key === 'L') {
                     this.setTool('pencil');
+                } else if (event.key === 'c' || event.key === 'C') {
+                    if (this.currentTool === 'pencil' && this.drawingPoints.length >= 3) {
+                        this.createShape();
+                        this.cancelDrawing();
+                    }
                 } else if (event.key === 'Enter') {
                     if (this.currentTool === 'pencil') {
                         this.finishDrawing();
@@ -645,6 +652,20 @@
                 point.y = Math.round(point.y * 2) / 2;
                 point.z = Math.round(point.z * 2) / 2;
                 
+                // Check if clicking near first point to close shape
+                if (this.drawingPoints.length > 2) {
+                    const firstPoint = this.drawingPoints[0];
+                    const distanceToFirst = point.distanceTo(firstPoint);
+                    
+                    if (distanceToFirst < 1.0) {
+                        // Close the shape and create it
+                        console.log('Замыкание формы, создание грани...');
+                        this.createShape();
+                        this.cancelDrawing();
+                        return;
+                    }
+                }
+                
                 // Add point marker
                 const markerGeometry = new THREE.SphereGeometry(0.1, 16, 16);
                 const markerMaterial = new THREE.MeshBasicMaterial({ color: 0xff0000 });
@@ -652,6 +673,12 @@
                 marker.position.copy(point);
                 this.scene.add(marker);
                 this.pointMarkers.push(marker);
+                
+                // Make first point bigger and different color
+                if (this.drawingPoints.length === 0) {
+                    marker.scale.set(1.5, 1.5, 1.5);
+                    marker.material.color.setHex(0x00ff00);
+                }
                 
                 this.drawingPoints.push(point);
                 
@@ -720,17 +747,16 @@
                     return;
                 }
                 
-                // Check if shape is closed (first and last points are close)
-                const firstPoint = this.drawingPoints[0];
-                const lastPoint = this.drawingPoints[this.drawingPoints.length - 1];
-                const distance = firstPoint.distanceTo(lastPoint);
-                const isClosed = distance < 0.5 && this.drawingPoints.length > 2;
-                
-                if (isClosed) {
-                    // Create filled shape
-                    this.createShape();
+                // If 3+ points, ask user
+                if (this.drawingPoints.length >= 3) {
+                    const createFace = confirm('Создать грань (OK) или линию (Отмена)?');
+                    if (createFace) {
+                        this.createShape();
+                    } else {
+                        this.createLine();
+                    }
                 } else {
-                    // Create line
+                    // Only 2 points - create line
                     this.createLine();
                 }
                 
@@ -758,30 +784,51 @@
             }
 
             createShape() {
-                // Close the shape
-                const points2D = this.drawingPoints.map(p => new THREE.Vector2(p.x, p.z));
+                if (this.drawingPoints.length < 3) {
+                    alert('Нужно минимум 3 точки для создания грани!');
+                    return;
+                }
                 
-                // Create shape
-                const shape = new THREE.Shape(points2D);
-                const geometry = new THREE.ShapeGeometry(shape);
-                
-                const material = new THREE.MeshStandardMaterial({ 
-                    color: 0x808080,
-                    side: THREE.DoubleSide,
-                    roughness: 0.5,
-                    metalness: 0.5
-                });
-                
-                const mesh = new THREE.Mesh(geometry, material);
-                mesh.rotation.x = -Math.PI / 2;
-                mesh.position.y = this.drawingPoints[0].y;
-                mesh.castShadow = true;
-                mesh.receiveShadow = true;
-                mesh.userData.type = 'Форма';
-                mesh.userData.name = `Форма ${this.objects.length + 1}`;
-                
-                this.scene.add(mesh);
-                this.objects.push(mesh);
+                try {
+                    // Get average Y position
+                    const avgY = this.drawingPoints.reduce((sum, p) => sum + p.y, 0) / this.drawingPoints.length;
+                    
+                    // Create 2D points for shape (project to XZ plane)
+                    const points2D = this.drawingPoints.map(p => new THREE.Vector2(p.x, p.z));
+                    
+                    // Create shape
+                    const shape = new THREE.Shape(points2D);
+                    
+                    // Extrude for better visibility
+                    const extrudeSettings = {
+                        depth: 0.1,
+                        bevelEnabled: false
+                    };
+                    const geometry = new THREE.ExtrudeGeometry(shape, extrudeSettings);
+                    
+                    const material = new THREE.MeshStandardMaterial({ 
+                        color: 0x4a9eff,
+                        side: THREE.DoubleSide,
+                        roughness: 0.5,
+                        metalness: 0.3
+                    });
+                    
+                    const mesh = new THREE.Mesh(geometry, material);
+                    mesh.rotation.x = -Math.PI / 2;
+                    mesh.position.y = avgY;
+                    mesh.castShadow = true;
+                    mesh.receiveShadow = true;
+                    mesh.userData.type = 'Грань';
+                    mesh.userData.name = `Грань ${this.objects.length + 1}`;
+                    
+                    this.scene.add(mesh);
+                    this.objects.push(mesh);
+                    
+                    console.log('Грань создана успешно!');
+                } catch (error) {
+                    console.error('Ошибка создания грани:', error);
+                    alert('Ошибка создания грани. Попробуйте нарисовать более простую форму.');
+                }
             }
 
             cancelDrawing() {
