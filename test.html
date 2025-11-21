@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Test Three.js</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background: #000;
+        }
+        canvas {
+            display: block;
+        }
+        #info {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            color: white;
+            background: rgba(0,0,0,0.7);
+            padding: 10px;
+            font-family: monospace;
+        }
+    </style>
+</head>
+<body>
+    <div id="info">
+        <h3>Тест Three.js</h3>
+        <p id="status">Загрузка...</p>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    
+    <script>
+        const status = document.getElementById('status');
+        
+        try {
+            status.innerHTML = 'Three.js версия: ' + THREE.REVISION + '<br>';
+            
+            // Создаем сцену
+            const scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x333333);
+            status.innerHTML += 'Сцена создана<br>';
+            
+            // Камера
+            const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.z = 5;
+            status.innerHTML += 'Камера создана<br>';
+            
+            // Рендерер
+            const renderer = new THREE.WebGLRenderer();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            document.body.appendChild(renderer.domElement);
+            status.innerHTML += 'Рендерер создан<br>';
+            
+            // Создаем куб
+            const geometry = new THREE.BoxGeometry();
+            const material = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
+            const cube = new THREE.Mesh(geometry, material);
+            scene.add(cube);
+            status.innerHTML += 'Куб добавлен<br>';
+            
+            // Анимация
+            function animate() {
+                requestAnimationFrame(animate);
+                cube.rotation.x += 0.01;
+                cube.rotation.y += 0.01;
+                renderer.render(scene, camera);
+            }
+            
+            animate();
+            status.innerHTML += '<strong style="color: lime;">ВСЕ РАБОТАЕТ!</strong><br>';
+            status.innerHTML += 'Вы должны видеть вращающийся зелёный куб';
+            
+        } catch (error) {
+            status.innerHTML += '<strong style="color: red;">ОШИБКА:</strong><br>' + error.message;
+            console.error(error);
+        }
+        
+        // Обработка изменения размера окна
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+    </script>
+</body>
+</html>

@@ -1552,7 +1552,38 @@
         }
 
         // Initialize the application
-        const app = new ModellerApp();
+        console.log('=== Starting application initialization ===');
+        
+        // Check if Three.js is loaded
+        if (typeof THREE === 'undefined') {
+            alert('ОШИБКА: Three.js не загружен! Проверьте подключение к интернету.');
+            console.error('Three.js is not loaded!');
+        } else {
+            console.log('Three.js loaded, version:', THREE.REVISION);
+        }
+        
+        // Wait for DOM to be fully loaded
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', function() {
+                console.log('DOM loaded, initializing app...');
+                try {
+                    window.app = new ModellerApp();
+                    console.log('Application initialized successfully!');
+                } catch (error) {
+                    console.error('Error initializing application:', error);
+                    alert('Ошибка инициализации: ' + error.message);
+                }
+            });
+        } else {
+            console.log('DOM already loaded, initializing app immediately...');
+            try {
+                window.app = new ModellerApp();
+                console.log('Application initialized successfully!');
+            } catch (error) {
+                console.error('Error initializing application:', error);
+                alert('Ошибка инициализации: ' + error.message);
+            }
+        }
     </script>
 </body>
 </html>
