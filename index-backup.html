@@ -1,0 +1,1665 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D Модeller - SketchUp Clone</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            overflow: hidden;
+            background: #2b2b2b;
+        }
+
+        #container {
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* Toolbar */
+        #toolbar {
+            background: #1e1e1e;
+            padding: 10px;
+            display: flex;
+            gap: 10px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+            z-index: 100;
+            flex-wrap: wrap;
+        }
+
+        .tool-section {
+            display: flex;
+            gap: 5px;
+            padding: 0 10px;
+            border-right: 1px solid #444;
+        }
+
+        .tool-section:last-child {
+            border-right: none;
+        }
+
+        .tool-btn {
+            background: #3a3a3a;
+            border: 2px solid #555;
+            color: #fff;
+            padding: 10px 15px;
+            cursor: pointer;
+            border-radius: 5px;
+            font-size: 14px;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .tool-btn:hover {
+            background: #4a4a4a;
+            border-color: #6a6a6a;
+        }
+
+        .tool-btn.active {
+            background: #0d7377;
+            border-color: #14ffec;
+        }
+
+        .color-input {
+            width: 50px;
+            height: 40px;
+            border: 2px solid #555;
+            border-radius: 5px;
+            cursor: pointer;
+            background: none;
+        }
+
+        /* Canvas */
+        #canvas-container {
+            flex: 1;
+            position: relative;
+            background: linear-gradient(180deg, #404040 0%, #2b2b2b 100%);
+            min-height: 500px;
+            overflow: hidden;
+        }
+        
+        #canvas-container canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+
+        #info {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: rgba(0, 0, 0, 0.7);
+            color: #fff;
+            padding: 15px;
+            border-radius: 5px;
+            font-size: 12px;
+            line-height: 1.6;
+            max-width: 300px;
+        }
+
+        #info h3 {
+            margin-bottom: 10px;
+            color: #14ffec;
+        }
+
+        /* Properties Panel */
+        #properties {
+            position: absolute;
+            right: 10px;
+            top: 10px;
+            background: rgba(0, 0, 0, 0.8);
+            color: #fff;
+            padding: 15px;
+            border-radius: 5px;
+            min-width: 200px;
+            display: none;
+        }
+
+        #properties.visible {
+            display: block;
+        }
+
+        #properties h3 {
+            margin-bottom: 10px;
+            color: #14ffec;
+        }
+
+        .property {
+            margin: 10px 0;
+        }
+
+        .property label {
+            display: block;
+            margin-bottom: 5px;
+            font-size: 12px;
+        }
+
+        .property input {
+            width: 100%;
+            padding: 5px;
+            border: 1px solid #555;
+            background: #2b2b2b;
+            color: #fff;
+            border-radius: 3px;
+        }
+
+        /* Grid Toggle */
+        .toggle-container {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .toggle-label {
+            color: #fff;
+            font-size: 14px;
+        }
+
+        /* Inference tooltip */
+        #inference-tooltip {
+            position: absolute;
+            background: rgba(0, 0, 0, 0.9);
+            color: #fff;
+            padding: 5px 10px;
+            border-radius: 3px;
+            font-size: 12px;
+            pointer-events: none;
+            display: none;
+            z-index: 1000;
+            white-space: nowrap;
+        }
+
+        #inference-tooltip.visible {
+            display: block;
+        }
+
+        #inference-tooltip.endpoint {
+            color: #00ff00;
+        }
+
+        #inference-tooltip.on-edge {
+            color: #00ffff;
+        }
+
+        #inference-tooltip.on-axis {
+            color: #ffff00;
+        }
+    </style>
+</head>
+<body>
+    <div id="container">
+        <div id="toolbar">
+            <div class="tool-section">
+                <button class="tool-btn" id="selectTool" onclick="app.setTool('select')" title="Выбор (V)">
+                    <span>✋</span> Выбор
+                </button>
+                <button class="tool-btn" id="pencilTool" onclick="app.setTool('pencil')" title="Карандаш (L)">
+                    <span>✏️</span> Карандаш
+                </button>
+            </div>
+            
+            <div class="tool-section">
+                <button class="tool-btn" onclick="app.addCube()" title="Куб (C)">
+                    <span>⬜</span> Куб
+                </button>
+                <button class="tool-btn" onclick="app.addSphere()" title="Сфера (S)">
+                    <span>⚪</span> Сфера
+                </button>
+                <button class="tool-btn" onclick="app.addCylinder()" title="Цилиндр (Y)">
+                    <span>🔵</span> Цилиндр
+                </button>
+                <button class="tool-btn" onclick="app.addPlane()" title="Плоскость (P)">
+                    <span>▬</span> Плоскость
+                </button>
+            </div>
+
+            <div class="tool-section">
+                <button class="tool-btn" onclick="app.setTransformMode('translate')" title="Перемещение (G)">
+                    <span>↔</span> Переместить
+                </button>
+                <button class="tool-btn" onclick="app.setTransformMode('rotate')" title="Вращение (R)">
+                    <span>↻</span> Вращать
+                </button>
+                <button class="tool-btn" onclick="app.setTransformMode('scale')" title="Масштаб (T)">
+                    <span>⬌</span> Масштаб
+                </button>
+            </div>
+
+            <div class="tool-section">
+                <input type="color" id="colorPicker" class="color-input" value="#808080" 
+                       onchange="app.changeObjectColor(this.value)" title="Цвет объекта">
+            </div>
+
+            <div class="tool-section">
+                <button class="tool-btn" onclick="app.deleteSelected()" title="Удалить (Delete)">
+                    <span>🗑</span> Удалить
+                </button>
+                <button class="tool-btn" onclick="app.duplicateSelected()" title="Дублировать (D)">
+                    <span>📋</span> Копировать
+                </button>
+            </div>
+
+            <div class="tool-section">
+                <button class="tool-btn" onclick="app.resetCamera()" title="Сброс камеры (Home)">
+                    <span>🏠</span> Камера
+                </button>
+                <div class="toggle-container">
+                    <input type="checkbox" id="gridToggle" checked onchange="app.toggleGrid(this.checked)">
+                    <label for="gridToggle" class="toggle-label">Сетка</label>
+                </div>
+            </div>
+
+            <div class="tool-section">
+                <button class="tool-btn" onclick="document.getElementById('fileInput').click()" title="Импорт 3D модели">
+                    <span>📁</span> Импорт
+                </button>
+                <button class="tool-btn" onclick="app.exportScene()" title="Экспорт">
+                    <span>💾</span> Экспорт
+                </button>
+                <button class="tool-btn" onclick="app.clearScene()" title="Очистить сцену">
+                    <span>🗑️</span> Очистить всё
+                </button>
+            </div>
+        </div>
+
+        <div id="canvas-container">
+            <div id="info">
+                <h3>🎨 3D Модeller</h3>
+                <p><strong>Управление камерой:</strong></p>
+                <p>• Левая кнопка мыши - вращение</p>
+                <p>• Правая кнопка мыши - панорама</p>
+                <p>• Колесико мыши - зум</p>
+                <p></p>
+                <p><strong>Горячие клавиши:</strong></p>
+                <p>• G - переместить объект</p>
+                <p>• R - вращать объект</p>
+                <p>• T - масштабировать</p>
+                <p>• D - дублировать</p>
+                <p>• Delete - удалить</p>
+                <p>• V - инструмент выбора</p>
+                <p>• L - Карандаш (рисование)</p>
+                <p>• Enter - завершить и создать грань</p>
+                <p>• C - замкнуть форму</p>
+                <p>• Клик на первую точку - замкнуть</p>
+                <p></p>
+                <p><strong>Умные подсказки (как в SketchUp):</strong></p>
+                <p>• Красная - ось X (→)</p>
+                <p>• Зелёная - ось Y (↔)</p>
+                <p>• Синяя - ось Z (↑ вертикаль)</p>
+                <p>• Голубой круг - привязка</p>
+                <p>• ← → - блокировка X/Y</p>
+                <p>• ↑ ↓ - блокировка Z (вверх)</p>
+                <p></p>
+                <p><strong>Импорт файлов:</strong></p>
+                <p>• SKP (SketchUp)</p>
+                <p>• DAE (COLLADA)</p>
+                <p>• OBJ, STL, FBX</p>
+                <p>• GLTF, GLB</p>
+            </div>
+
+            <div id="properties">
+                <h3>Свойства объекта</h3>
+                <div class="property">
+                    <label>Имя:</label>
+                    <input type="text" id="objName" onchange="app.updateSelectedObject('name', this.value)">
+                </div>
+                <div class="property">
+                    <label>Позиция X:</label>
+                    <input type="number" id="objPosX" step="0.1" onchange="app.updatePosition('x', this.value)">
+                </div>
+                <div class="property">
+                    <label>Позиция Y:</label>
+                    <input type="number" id="objPosY" step="0.1" onchange="app.updatePosition('y', this.value)">
+                </div>
+                <div class="property">
+                    <label>Позиция Z:</label>
+                    <input type="number" id="objPosZ" step="0.1" onchange="app.updatePosition('z', this.value)">
+                </div>
+            </div>
+
+            <!-- Inference tooltip -->
+            <div id="inference-tooltip"></div>
+        </div>
+    </div>
+
+    <!-- Hidden file input -->
+    <input type="file" id="fileInput" accept=".skp,.dae,.obj,.stl,.fbx,.gltf,.glb" style="display: none;" onchange="app.loadFile(event)">
+
+    <!-- Three.js Library -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    
+    <!-- OrbitControls -->
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    
+    <!-- TransformControls -->
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/TransformControls.js"></script>
+    
+    <!-- Loaders for different file formats -->
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/OBJLoader.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/STLLoader.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/ColladaLoader.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/FBXLoader.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+
+    <script>
+        class ModellerApp {
+            constructor() {
+                this.scene = null;
+                this.camera = null;
+                this.renderer = null;
+                this.orbitControls = null;
+                this.transformControls = null;
+                this.selectedObject = null;
+                this.objects = [];
+                this.gridHelper = null;
+                this.raycaster = new THREE.Raycaster();
+                this.mouse = new THREE.Vector2();
+                this.loadedModels = [];
+                
+                // Pencil tool properties
+                this.currentTool = 'select';
+                this.drawingPoints = [];
+                this.drawingLine = null;
+                this.previewLine = null;
+                this.pointMarkers = [];
+                this.drawingPlane = null;
+                
+                // Inference system (like SketchUp)
+                this.inferenceLines = [];
+                this.snapPoints = [];
+                this.currentInference = null;
+                this.snapDistance = 0.5; // Distance for snapping
+                this.axisSnapAngle = 5; // Degrees for axis snapping
+                this.lockedAxis = null; // 'x', 'y', 'z' or null
+                
+                // Initialize loaders
+                this.objLoader = new THREE.OBJLoader();
+                this.stlLoader = new THREE.STLLoader();
+                this.colladaLoader = new THREE.ColladaLoader();
+                this.gltfLoader = new THREE.GLTFLoader();
+                
+                this.init();
+                this.animate();
+                this.setupEventListeners();
+            }
+
+            init() {
+                const container = document.getElementById('canvas-container');
+                
+                console.log('Initializing 3D scene...');
+                console.log('Container size:', container.clientWidth, 'x', container.clientHeight);
+
+                // Scene
+                this.scene = new THREE.Scene();
+                this.scene.background = new THREE.Color(0x505050); // Lighter background
+
+                // Camera
+                const width = container.clientWidth || window.innerWidth;
+                const height = container.clientHeight || window.innerHeight - 100;
+                
+                this.camera = new THREE.PerspectiveCamera(
+                    75,
+                    width / height,
+                    0.1,
+                    1000
+                );
+                this.camera.position.set(10, 10, 10);
+                this.camera.lookAt(0, 0, 0);
+
+                // Renderer
+                this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+                this.renderer.setSize(width, height);
+                this.renderer.setPixelRatio(window.devicePixelRatio);
+                this.renderer.shadowMap.enabled = true;
+                this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+                container.appendChild(this.renderer.domElement);
+                
+                console.log('Renderer created, canvas added to DOM');
+
+                // Lights
+                const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+                this.scene.add(ambientLight);
+
+                const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+                directionalLight.position.set(10, 20, 10);
+                directionalLight.castShadow = true;
+                directionalLight.shadow.camera.left = -20;
+                directionalLight.shadow.camera.right = 20;
+                directionalLight.shadow.camera.top = 20;
+                directionalLight.shadow.camera.bottom = -20;
+                this.scene.add(directionalLight);
+
+                // Grid - more visible
+                this.gridHelper = new THREE.GridHelper(40, 40, 0x888888, 0x444444);
+                this.gridHelper.material.opacity = 0.5;
+                this.gridHelper.material.transparent = true;
+                this.scene.add(this.gridHelper);
+
+                // Axes Helper
+                const axesHelper = new THREE.AxesHelper(5);
+                this.scene.add(axesHelper);
+
+                // Ground Plane - semi-transparent so grid is visible
+                const groundGeometry = new THREE.PlaneGeometry(40, 40);
+                const groundMaterial = new THREE.MeshStandardMaterial({ 
+                    color: 0x1a1a1a,
+                    roughness: 0.8,
+                    metalness: 0.2,
+                    transparent: true,
+                    opacity: 0.3
+                });
+                const ground = new THREE.Mesh(groundGeometry, groundMaterial);
+                ground.rotation.x = -Math.PI / 2;
+                ground.position.y = -0.01; // Slightly below grid
+                ground.receiveShadow = true;
+                ground.userData.isGround = true;
+                this.scene.add(ground);
+
+                // Controls
+                this.orbitControls = new THREE.OrbitControls(this.camera, this.renderer.domElement);
+                this.orbitControls.enableDamping = true;
+                this.orbitControls.dampingFactor = 0.05;
+                this.orbitControls.target.set(0, 0, 0);
+                this.orbitControls.update();
+                
+                console.log('Scene initialization complete. Objects in scene:', this.scene.children.length);
+                
+                // Add a test cube at start to verify scene is working
+                const testGeometry = new THREE.BoxGeometry(2, 2, 2);
+                const testMaterial = new THREE.MeshStandardMaterial({ 
+                    color: 0xff6b6b,
+                    roughness: 0.5,
+                    metalness: 0.5
+                });
+                const testCube = new THREE.Mesh(testGeometry, testMaterial);
+                testCube.position.set(0, 1, 0);
+                testCube.castShadow = true;
+                testCube.receiveShadow = true;
+                testCube.userData.type = 'Куб';
+                testCube.userData.name = 'Тестовый куб';
+                this.scene.add(testCube);
+                this.objects.push(testCube);
+                console.log('Test cube added at (0, 1, 0)');
+
+                // Transform Controls
+                this.transformControls = new THREE.TransformControls(this.camera, this.renderer.domElement);
+                this.transformControls.addEventListener('dragging-changed', (event) => {
+                    this.orbitControls.enabled = !event.value;
+                });
+                this.transformControls.addEventListener('change', () => {
+                    this.updatePropertiesPanel();
+                });
+                this.scene.add(this.transformControls);
+
+                // Handle window resize
+                window.addEventListener('resize', () => this.onWindowResize());
+            }
+
+            setupEventListeners() {
+                // Mouse events for selection
+                this.renderer.domElement.addEventListener('click', (e) => this.onMouseClick(e));
+                this.renderer.domElement.addEventListener('mousemove', (e) => this.onMouseMove(e));
+                
+                // Keyboard shortcuts
+                window.addEventListener('keydown', (e) => this.onKeyDown(e));
+            }
+
+            onMouseClick(event) {
+                const rect = this.renderer.domElement.getBoundingClientRect();
+                
+                this.mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+                this.mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+
+                if (this.currentTool === 'pencil') {
+                    this.addDrawingPoint();
+                    return;
+                }
+
+                this.raycaster.setFromCamera(this.mouse, this.camera);
+                const intersects = this.raycaster.intersectObjects(this.objects);
+
+                if (intersects.length > 0) {
+                    this.selectObject(intersects[0].object);
+                } else {
+                    this.deselectObject();
+                }
+            }
+
+            onMouseMove(event) {
+                if (this.currentTool !== 'pencil' || this.drawingPoints.length === 0) return;
+
+                const rect = this.renderer.domElement.getBoundingClientRect();
+                this.mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+                this.mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+
+                this.updateInferenceSystem(event.clientX, event.clientY);
+                this.updatePreviewLine();
+            }
+
+            onKeyDown(event) {
+                if (event.key === 'Delete' || event.key === 'Backspace') {
+                    this.deleteSelected();
+                } else if (event.key === 'g' || event.key === 'G') {
+                    this.setTransformMode('translate');
+                } else if (event.key === 'r' || event.key === 'R') {
+                    this.setTransformMode('rotate');
+                } else if (event.key === 't' || event.key === 'T') {
+                    this.setTransformMode('scale');
+                } else if (event.key === 'd' || event.key === 'D') {
+                    this.duplicateSelected();
+                } else if (event.key === 'v' || event.key === 'V') {
+                    this.setTool('select');
+                } else if (event.key === 'l' || event.key === 'L') {
+                    this.setTool('pencil');
+                } else if (event.key === 'c' || event.key === 'C') {
+                    if (this.currentTool === 'pencil' && this.drawingPoints.length >= 3) {
+                        this.createShape();
+                        this.cancelDrawing();
+                    }
+                } else if (event.key === 'Enter') {
+                    if (this.currentTool === 'pencil') {
+                        this.finishDrawing();
+                    }
+                } else if (event.key === 'Escape') {
+                    if (this.currentTool === 'pencil' && this.drawingPoints.length > 0) {
+                        this.cancelDrawing();
+                    } else {
+                        this.deselectObject();
+                    }
+                } else if (event.key === 'ArrowLeft') {
+                    if (this.currentTool === 'pencil' && this.drawingPoints.length > 0) {
+                        this.lockedAxis = this.lockedAxis === 'x' ? null : 'x';
+                        console.log('Ось заблокирована: X (красная)');
+                    }
+                } else if (event.key === 'ArrowUp') {
+                    if (this.currentTool === 'pencil' && this.drawingPoints.length > 0) {
+                        this.lockedAxis = this.lockedAxis === 'y' ? null : 'y';
+                        console.log('Ось заблокирована: Y (зелёная)');
+                    }
+                } else if (event.key === 'ArrowRight' || event.key === 'ArrowDown') {
+                    if (this.currentTool === 'pencil' && this.drawingPoints.length > 0) {
+                        this.lockedAxis = this.lockedAxis === 'z' ? null : 'z';
+                        console.log('Ось заблокирована: Z (синяя)');
+                    }
+                }
+            }
+
+            addCube() {
+                const geometry = new THREE.BoxGeometry(2, 2, 2);
+                const material = new THREE.MeshStandardMaterial({ 
+                    color: 0x808080,
+                    roughness: 0.5,
+                    metalness: 0.5
+                });
+                const cube = new THREE.Mesh(geometry, material);
+                cube.position.y = 1;
+                cube.castShadow = true;
+                cube.receiveShadow = true;
+                cube.userData.type = 'Куб';
+                cube.userData.name = `Куб ${this.objects.length + 1}`;
+                
+                this.scene.add(cube);
+                this.objects.push(cube);
+                this.selectObject(cube);
+            }
+
+            addSphere() {
+                const geometry = new THREE.SphereGeometry(1, 32, 32);
+                const material = new THREE.MeshStandardMaterial({ 
+                    color: 0x808080,
+                    roughness: 0.5,
+                    metalness: 0.5
+                });
+                const sphere = new THREE.Mesh(geometry, material);
+                sphere.position.y = 1;
+                sphere.castShadow = true;
+                sphere.receiveShadow = true;
+                sphere.userData.type = 'Сфера';
+                sphere.userData.name = `Сфера ${this.objects.length + 1}`;
+                
+                this.scene.add(sphere);
+                this.objects.push(sphere);
+                this.selectObject(sphere);
+            }
+
+            addCylinder() {
+                const geometry = new THREE.CylinderGeometry(1, 1, 2, 32);
+                const material = new THREE.MeshStandardMaterial({ 
+                    color: 0x808080,
+                    roughness: 0.5,
+                    metalness: 0.5
+                });
+                const cylinder = new THREE.Mesh(geometry, material);
+                cylinder.position.y = 1;
+                cylinder.castShadow = true;
+                cylinder.receiveShadow = true;
+                cylinder.userData.type = 'Цилиндр';
+                cylinder.userData.name = `Цилиндр ${this.objects.length + 1}`;
+                
+                this.scene.add(cylinder);
+                this.objects.push(cylinder);
+                this.selectObject(cylinder);
+            }
+
+            addPlane() {
+                const geometry = new THREE.PlaneGeometry(4, 4);
+                const material = new THREE.MeshStandardMaterial({ 
+                    color: 0x808080,
+                    side: THREE.DoubleSide,
+                    roughness: 0.5,
+                    metalness: 0.5
+                });
+                const plane = new THREE.Mesh(geometry, material);
+                plane.rotation.x = -Math.PI / 2;
+                plane.position.y = 0.01;
+                plane.castShadow = true;
+                plane.receiveShadow = true;
+                plane.userData.type = 'Плоскость';
+                plane.userData.name = `Плоскость ${this.objects.length + 1}`;
+                
+                this.scene.add(plane);
+                this.objects.push(plane);
+                this.selectObject(plane);
+            }
+
+            selectObject(object) {
+                if (object.userData.isGround) return;
+                
+                this.selectedObject = object;
+                this.transformControls.attach(object);
+                this.updatePropertiesPanel();
+                
+                // Highlight selected object
+                if (object.material) {
+                    object.material.emissive = new THREE.Color(0x333333);
+                }
+            }
+
+            deselectObject() {
+                if (this.selectedObject && this.selectedObject.material) {
+                    this.selectedObject.material.emissive = new THREE.Color(0x000000);
+                }
+                this.selectedObject = null;
+                this.transformControls.detach();
+                document.getElementById('properties').classList.remove('visible');
+            }
+
+            updatePropertiesPanel() {
+                if (!this.selectedObject) return;
+
+                const panel = document.getElementById('properties');
+                panel.classList.add('visible');
+
+                document.getElementById('objName').value = this.selectedObject.userData.name || '';
+                document.getElementById('objPosX').value = this.selectedObject.position.x.toFixed(2);
+                document.getElementById('objPosY').value = this.selectedObject.position.y.toFixed(2);
+                document.getElementById('objPosZ').value = this.selectedObject.position.z.toFixed(2);
+            }
+
+            updatePosition(axis, value) {
+                if (!this.selectedObject) return;
+                this.selectedObject.position[axis] = parseFloat(value);
+            }
+
+            updateSelectedObject(property, value) {
+                if (!this.selectedObject) return;
+                this.selectedObject.userData[property] = value;
+            }
+
+            setTransformMode(mode) {
+                this.transformControls.setMode(mode);
+                
+                // Update button states
+                document.querySelectorAll('.tool-btn').forEach(btn => btn.classList.remove('active'));
+            }
+
+            setTool(tool) {
+                // Remove active class from all tool buttons
+                document.querySelectorAll('.tool-btn').forEach(btn => btn.classList.remove('active'));
+                
+                this.currentTool = tool;
+                
+                if (tool === 'select') {
+                    document.getElementById('selectTool').classList.add('active');
+                    this.transformControls.setMode('translate');
+                    this.cancelDrawing();
+                    this.orbitControls.enabled = true;
+                } else if (tool === 'pencil') {
+                    document.getElementById('pencilTool').classList.add('active');
+                    this.deselectObject();
+                    this.transformControls.detach();
+                    this.cancelDrawing();
+                    // Keep orbit controls enabled for camera movement
+                }
+            }
+
+            addDrawingPoint() {
+                // Get snapped point using inference system
+                const point = this.getSnappedPoint();
+                if (!point) return;
+                
+                // Check if clicking near first point to close shape
+                if (this.drawingPoints.length > 2) {
+                    const firstPoint = this.drawingPoints[0];
+                    const distanceToFirst = point.distanceTo(firstPoint);
+                    
+                    if (distanceToFirst < 1.0) {
+                        // Close the shape and create it
+                        console.log('Замыкание формы, создание грани...');
+                        this.createShape();
+                        this.cancelDrawing();
+                        return;
+                    }
+                }
+                
+                // Add point marker
+                const markerGeometry = new THREE.SphereGeometry(0.1, 16, 16);
+                const markerMaterial = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+                const marker = new THREE.Mesh(markerGeometry, markerMaterial);
+                marker.position.copy(point);
+                this.scene.add(marker);
+                this.pointMarkers.push(marker);
+                
+                // Make first point bigger and different color
+                if (this.drawingPoints.length === 0) {
+                    marker.scale.set(1.5, 1.5, 1.5);
+                    marker.material.color.setHex(0x00ff00);
+                }
+                
+                this.drawingPoints.push(point);
+                
+                // Update drawing line
+                this.updateDrawingLine();
+            }
+
+            updateDrawingLine() {
+                // Remove old line
+                if (this.drawingLine) {
+                    this.scene.remove(this.drawingLine);
+                }
+                
+                if (this.drawingPoints.length < 2) return;
+                
+                // Create line geometry
+                const geometry = new THREE.BufferGeometry().setFromPoints(this.drawingPoints);
+                const material = new THREE.LineBasicMaterial({ 
+                    color: 0x00ff00,
+                    linewidth: 2
+                });
+                
+                this.drawingLine = new THREE.Line(geometry, material);
+                this.scene.add(this.drawingLine);
+            }
+
+            updatePreviewLine() {
+                // Remove old preview
+                if (this.previewLine) {
+                    this.scene.remove(this.previewLine);
+                }
+                
+                if (this.drawingPoints.length === 0) return;
+                
+                // Get mouse position in 3D space with snapping
+                const point = this.getSnappedPoint();
+                if (!point) return;
+                
+                // Create preview line from last point to cursor
+                const lastPoint = this.drawingPoints[this.drawingPoints.length - 1];
+                const geometry = new THREE.BufferGeometry().setFromPoints([lastPoint, point]);
+                const material = new THREE.LineDashedMaterial({ 
+                    color: 0xffff00,
+                    linewidth: 1,
+                    dashSize: 0.2,
+                    gapSize: 0.1
+                });
+                
+                this.previewLine = new THREE.Line(geometry, material);
+                this.previewLine.computeLineDistances();
+                this.scene.add(this.previewLine);
+            }
+
+            finishDrawing() {
+                if (this.drawingPoints.length < 2) {
+                    alert('Нужно минимум 2 точки для создания линии');
+                    return;
+                }
+                
+                // If 3+ points, ask user
+                if (this.drawingPoints.length >= 3) {
+                    const createFace = confirm('Создать грань (OK) или линию (Отмена)?');
+                    if (createFace) {
+                        this.createShape();
+                    } else {
+                        this.createLine();
+                    }
+                } else {
+                    // Only 2 points - create line
+                    this.createLine();
+                }
+                
+                this.cancelDrawing();
+            }
+
+            createLine() {
+                // Create a tube geometry for better visibility
+                const curve = new THREE.CatmullRomCurve3(this.drawingPoints);
+                const tubeGeometry = new THREE.TubeGeometry(curve, this.drawingPoints.length * 2, 0.05, 8, false);
+                const material = new THREE.MeshStandardMaterial({ 
+                    color: 0x808080,
+                    roughness: 0.5,
+                    metalness: 0.5
+                });
+                
+                const line = new THREE.Mesh(tubeGeometry, material);
+                line.castShadow = true;
+                line.receiveShadow = true;
+                line.userData.type = 'Линия';
+                line.userData.name = `Линия ${this.objects.length + 1}`;
+                
+                this.scene.add(line);
+                this.objects.push(line);
+            }
+
+            createShape() {
+                if (this.drawingPoints.length < 3) {
+                    alert('Нужно минимум 3 точки для создания грани!');
+                    return;
+                }
+                
+                try {
+                    const points = this.drawingPoints;
+                    
+                    // Calculate average position and variance for each axis
+                    const avgX = points.reduce((sum, p) => sum + p.x, 0) / points.length;
+                    const avgY = points.reduce((sum, p) => sum + p.y, 0) / points.length;
+                    const avgZ = points.reduce((sum, p) => sum + p.z, 0) / points.length;
+                    
+                    const xVar = Math.max(...points.map(p => Math.abs(p.x - avgX)));
+                    const yVar = Math.max(...points.map(p => Math.abs(p.y - avgY)));
+                    const zVar = Math.max(...points.map(p => Math.abs(p.z - avgZ)));
+                    
+                    console.log('Variance:', { xVar, yVar, zVar });
+                    console.log('Points:', points);
+                    
+                    let geometry, mesh;
+                    const material = new THREE.MeshStandardMaterial({ 
+                        color: 0x4a9eff,
+                        side: THREE.DoubleSide,
+                        roughness: 0.5,
+                        metalness: 0.3
+                    });
+                    
+                    // XZ plane (horizontal - floor/ceiling)
+                    if (yVar < 0.5) {
+                        console.log('Creating horizontal face (XZ plane)');
+                        const points2D = points.map(p => new THREE.Vector2(p.x, p.z));
+                        const shape = new THREE.Shape(points2D);
+                        geometry = new THREE.ShapeGeometry(shape);
+                        
+                        mesh = new THREE.Mesh(geometry, material);
+                        mesh.rotation.x = -Math.PI / 2;
+                        mesh.position.y = avgY;
+                    }
+                    // XY plane (vertical wall, facing Z direction)
+                    else if (zVar < 0.5) {
+                        console.log('Creating vertical face facing Z (XY plane)');
+                        const points2D = points.map(p => new THREE.Vector2(p.x, p.y));
+                        const shape = new THREE.Shape(points2D);
+                        geometry = new THREE.ShapeGeometry(shape);
+                        
+                        mesh = new THREE.Mesh(geometry, material);
+                        // No rotation needed for XY plane
+                        mesh.position.z = avgZ;
+                    }
+                    // YZ plane (vertical wall, facing X direction)
+                    else if (xVar < 0.5) {
+                        console.log('Creating vertical face facing X (YZ plane)');
+                        const points2D = points.map(p => new THREE.Vector2(p.z, p.y));
+                        const shape = new THREE.Shape(points2D);
+                        geometry = new THREE.ShapeGeometry(shape);
+                        
+                        mesh = new THREE.Mesh(geometry, material);
+                        mesh.rotation.y = Math.PI / 2;
+                        mesh.position.x = avgX;
+                    }
+                    // Default: try horizontal
+                    else {
+                        console.log('Non-planar, defaulting to horizontal');
+                        const points2D = points.map(p => new THREE.Vector2(p.x, p.z));
+                        const shape = new THREE.Shape(points2D);
+                        geometry = new THREE.ShapeGeometry(shape);
+                        
+                        mesh = new THREE.Mesh(geometry, material);
+                        mesh.rotation.x = -Math.PI / 2;
+                        mesh.position.y = avgY;
+                    }
+                    
+                    mesh.castShadow = true;
+                    mesh.receiveShadow = true;
+                    mesh.userData.type = 'Грань';
+                    mesh.userData.name = `Грань ${this.objects.length + 1}`;
+                    
+                    this.scene.add(mesh);
+                    this.objects.push(mesh);
+                    
+                    console.log('Грань создана! Позиция:', mesh.position);
+                } catch (error) {
+                    console.error('Ошибка создания грани:', error);
+                    alert('Ошибка создания грани: ' + error.message);
+                }
+            }
+
+            cancelDrawing() {
+                // Remove all point markers
+                this.pointMarkers.forEach(marker => this.scene.remove(marker));
+                this.pointMarkers = [];
+                
+                // Remove drawing line
+                if (this.drawingLine) {
+                    this.scene.remove(this.drawingLine);
+                    this.drawingLine = null;
+                }
+                
+                // Remove preview line
+                if (this.previewLine) {
+                    this.scene.remove(this.previewLine);
+                    this.previewLine = null;
+                }
+                
+                // Clear points
+                this.drawingPoints = [];
+                
+                // Clear inference
+                this.clearInferenceLines();
+                
+                // Reset locked axis
+                this.lockedAxis = null;
+            }
+
+            // ============ INFERENCE SYSTEM (like SketchUp) ============
+            
+            getSnappedPoint() {
+                this.raycaster.setFromCamera(this.mouse, this.camera);
+                
+                let point = null;
+                
+                // If we have a previous point and axis is locked, use helper plane
+                if (this.drawingPoints.length > 0 && this.lockedAxis) {
+                    const lastPoint = this.drawingPoints[this.drawingPoints.length - 1];
+                    point = this.getRayPointOnAxisPlane(lastPoint, this.lockedAxis);
+                } else {
+                    // Normal intersection with ground and objects
+                    const groundPlane = this.scene.children.find(child => child.userData.isGround);
+                    const intersectables = [groundPlane, ...this.objects];
+                    const intersects = this.raycaster.intersectObjects(intersectables, true);
+                    
+                    if (intersects.length === 0) {
+                        // If no intersection, try to project onto a plane at last point height
+                        if (this.drawingPoints.length > 0) {
+                            const lastPoint = this.drawingPoints[this.drawingPoints.length - 1];
+                            point = this.getRayPointOnPlane(lastPoint);
+                        } else {
+                            return null;
+                        }
+                    } else {
+                        point = intersects[0].point.clone();
+                    }
+                }
+                
+                if (!point) return null;
+                
+                // Check for vertex snapping first
+                const vertexSnap = this.snapToVertices(point);
+                if (vertexSnap) {
+                    return vertexSnap;
+                }
+                
+                // If we have a previous point, try axis snapping
+                if (this.drawingPoints.length > 0) {
+                    const lastPoint = this.drawingPoints[this.drawingPoints.length - 1];
+                    
+                    // If axis is locked, force that axis
+                    if (this.lockedAxis) {
+                        point = this.forceAxisLock(point, lastPoint, this.lockedAxis);
+                    } else {
+                        const snappedToAxis = this.snapToAxis(point, lastPoint);
+                        if (snappedToAxis) {
+                            point = snappedToAxis.point;
+                            this.currentInference = snappedToAxis.inference;
+                        }
+                    }
+                }
+                
+                // Grid snapping
+                point.x = Math.round(point.x * 2) / 2;
+                point.y = Math.round(point.y * 2) / 2;
+                point.z = Math.round(point.z * 2) / 2;
+                
+                return point;
+            }
+            
+            getRayPointOnPlane(referencePoint) {
+                // Create a plane at the reference point, facing the camera
+                const plane = new THREE.Plane();
+                const normal = new THREE.Vector3(0, 1, 0); // Horizontal plane
+                plane.setFromNormalAndCoplanarPoint(normal, referencePoint);
+                
+                const intersection = new THREE.Vector3();
+                this.raycaster.ray.intersectPlane(plane, intersection);
+                
+                return intersection;
+            }
+            
+            getRayPointOnAxisPlane(lastPoint, axis) {
+                // Create a plane perpendicular to the locked axis
+                const plane = new THREE.Plane();
+                let normal;
+                
+                if (axis === 'x') {
+                    // Plane perpendicular to X (YZ plane)
+                    normal = this.camera.position.clone().sub(lastPoint).normalize();
+                    normal.x = 0;
+                    normal.normalize();
+                } else if (axis === 'y') {
+                    // Plane perpendicular to Y (XZ plane) - but we want vertical drawing
+                    // Use camera direction but keep vertical
+                    normal = this.camera.position.clone().sub(lastPoint).normalize();
+                    normal.y = 0;
+                    normal.normalize();
+                } else if (axis === 'z') {
+                    // Plane perpendicular to Z (XY plane)
+                    normal = this.camera.position.clone().sub(lastPoint).normalize();
+                    normal.z = 0;
+                    normal.normalize();
+                }
+                
+                if (normal.length() === 0) {
+                    normal = new THREE.Vector3(0, 0, 1);
+                }
+                
+                plane.setFromNormalAndCoplanarPoint(normal, lastPoint);
+                
+                const intersection = new THREE.Vector3();
+                this.raycaster.ray.intersectPlane(plane, intersection);
+                
+                return intersection;
+            }
+
+            updateInferenceSystem(screenX, screenY) {
+                this.clearInferenceLines();
+                
+                if (this.drawingPoints.length === 0) return;
+                
+                const point = this.getSnappedPoint();
+                if (!point) return;
+                
+                const lastPoint = this.drawingPoints[this.drawingPoints.length - 1];
+                
+                // Show locked axis
+                if (this.lockedAxis) {
+                    let color, label;
+                    if (this.lockedAxis === 'x') {
+                        color = 0xff0000;
+                        label = '\u0417\u0410\u0411\u041b\u041e\u041a\u0418\u0420\u041e\u0412\u0410\u041d\u041e: \u041e\u0441\u044c X';
+                    } else if (this.lockedAxis === 'y') {
+                        color = 0x00ff00;
+                        label = '\u0417\u0410\u0411\u041b\u041e\u041a\u0418\u0420\u041e\u0412\u0410\u041d\u041e: \u041e\u0441\u044c Y';
+                    } else if (this.lockedAxis === 'z') {
+                        color = 0x0000ff;
+                        label = 'ЗАБЛОКИРОВАНО: Ось Z';
+                    }
+                    this.drawInferenceLine(lastPoint, point, color);
+                    this.showInferenceTooltip(screenX, screenY, label, 'on-axis');
+                    return;
+                }
+                
+                // Check for axis alignment
+                const axisInfo = this.checkAxisAlignment(point, lastPoint);
+                if (axisInfo) {
+                    this.drawInferenceLine(lastPoint, point, axisInfo.color);
+                    this.showInferenceTooltip(screenX, screenY, axisInfo.label, axisInfo.type);
+                } else {
+                    this.hideInferenceTooltip();
+                }
+                
+                // Check snap to other points
+                const snapInfo = this.checkPointSnap(point);
+                if (snapInfo) {
+                    this.drawSnapIndicator(snapInfo.point);
+                    this.showInferenceTooltip(screenX, screenY, snapInfo.label, snapInfo.type);
+                }
+            }
+
+            checkPointSnap(point) {
+                // Check distance to existing drawing points
+                for (let i = 0; i < this.drawingPoints.length; i++) {
+                    const dist = point.distanceTo(this.drawingPoints[i]);
+                    if (dist < this.snapDistance) {
+                        if (i === 0 && this.drawingPoints.length > 2) {
+                            return { point: this.drawingPoints[i], label: 'Начальная точка', type: 'endpoint' };
+                        }
+                        return { point: this.drawingPoints[i], label: 'Точка', type: 'endpoint' };
+                    }
+                }
+                
+                // Check distance to vertices of existing objects
+                for (const obj of this.objects) {
+                    const vertices = this.extractVertices(obj);
+                    for (const vertex of vertices) {
+                        const dist = point.distanceTo(vertex);
+                        if (dist < this.snapDistance) {
+                            return { point: vertex, label: 'Вершина объекта', type: 'endpoint' };
+                        }
+                    }
+                }
+                
+                return null;
+            }
+
+            snapToAxis(point, fromPoint) {
+                const delta = new THREE.Vector3().subVectors(point, fromPoint);
+                const distance = delta.length();
+                
+                if (distance < 0.1) return null;
+                
+                // Calculate angles relative to axes
+                const absX = Math.abs(delta.x);
+                const absY = Math.abs(delta.y);
+                const absZ = Math.abs(delta.z);
+                
+                const threshold = 0.3; // Snap threshold
+                
+                // Snap to X axis (Red)
+                if (absY < threshold && absZ < threshold && absX > 0.5) {
+                    return {
+                        point: new THREE.Vector3(point.x, fromPoint.y, fromPoint.z),
+                        inference: { axis: 'x', color: 0xff0000, label: 'На оси X' }
+                    };
+                }
+                
+                // Snap to Y axis (Green)
+                if (absX < threshold && absZ < threshold && absY > 0.5) {
+                    return {
+                        point: new THREE.Vector3(fromPoint.x, point.y, fromPoint.z),
+                        inference: { axis: 'y', color: 0x00ff00, label: 'На оси Y' }
+                    };
+                }
+                
+                // Snap to Z axis (Blue)
+                if (absX < threshold && absY < threshold && absZ > 0.5) {
+                    return {
+                        point: new THREE.Vector3(fromPoint.x, fromPoint.y, point.z),
+                        inference: { axis: 'z', color: 0x0000ff, label: 'На оси Z' }
+                    };
+                }
+                
+                return null;
+            }
+
+            checkAxisAlignment(point, fromPoint) {
+                const delta = new THREE.Vector3().subVectors(point, fromPoint);
+                const absX = Math.abs(delta.x);
+                const absY = Math.abs(delta.y);
+                const absZ = Math.abs(delta.z);
+                
+                const threshold = 0.3;
+                
+                if (absY < threshold && absZ < threshold && absX > 0.5) {
+                    return { axis: 'x', color: 0xff0000, label: 'На оси X', type: 'on-axis' };
+                }
+                if (absX < threshold && absZ < threshold && absY > 0.5) {
+                    return { axis: 'y', color: 0x00ff00, label: 'На оси Y', type: 'on-axis' };
+                }
+                if (absX < threshold && absY < threshold && absZ > 0.5) {
+                    return { axis: 'z', color: 0x0000ff, label: 'На оси Z', type: 'on-axis' };
+                }
+                
+                return null;
+            }
+
+            checkPointSnap(point) {
+                // Check distance to existing drawing points
+                for (let i = 0; i < this.drawingPoints.length; i++) {
+                    const dist = point.distanceTo(this.drawingPoints[i]);
+                    if (dist < this.snapDistance) {
+                        if (i === 0 && this.drawingPoints.length > 2) {
+                            return { point: this.drawingPoints[i], label: 'Начальная точка', type: 'endpoint' };
+                        }
+                        return { point: this.drawingPoints[i], label: 'Точка', type: 'endpoint' };
+                    }
+                }
+                
+                return null;
+            }
+
+            drawInferenceLine(from, to, color) {
+                const geometry = new THREE.BufferGeometry().setFromPoints([from, to]);
+                const material = new THREE.LineBasicMaterial({ 
+                    color: color,
+                    linewidth: 2,
+                    transparent: true,
+                    opacity: 0.6
+                });
+                
+                const line = new THREE.Line(geometry, material);
+                this.scene.add(line);
+                this.inferenceLines.push(line);
+            }
+
+            drawSnapIndicator(point) {
+                const geometry = new THREE.SphereGeometry(0.15, 16, 16);
+                const material = new THREE.MeshBasicMaterial({ 
+                    color: 0x00ffff,
+                    transparent: true,
+                    opacity: 0.5
+                });
+                const indicator = new THREE.Mesh(geometry, material);
+                indicator.position.copy(point);
+                this.scene.add(indicator);
+                this.inferenceLines.push(indicator);
+            }
+
+            clearInferenceLines() {
+                this.inferenceLines.forEach(obj => this.scene.remove(obj));
+                this.inferenceLines = [];
+            }
+
+            showInferenceTooltip(x, y, text, type) {
+                const tooltip = document.getElementById('inference-tooltip');
+                
+                // Add distance if we have points
+                if (this.drawingPoints.length > 0) {
+                    const lastPoint = this.drawingPoints[this.drawingPoints.length - 1];
+                    const currentPoint = this.getSnappedPoint();
+                    if (currentPoint) {
+                        const distance = lastPoint.distanceTo(currentPoint);
+                        text += ` (${distance.toFixed(2)}м)`;
+                    }
+                }
+                
+                tooltip.textContent = text;
+                tooltip.style.left = (x + 15) + 'px';
+                tooltip.style.top = (y + 15) + 'px';
+                tooltip.className = 'visible ' + type;
+            }
+
+            hideInferenceTooltip() {
+                const tooltip = document.getElementById('inference-tooltip');
+                tooltip.classList.remove('visible');
+            }
+
+            forceAxisLock(point, fromPoint, axis) {
+                // Force point to specific axis
+                if (axis === 'x') {
+                    return new THREE.Vector3(point.x, fromPoint.y, fromPoint.z);
+                } else if (axis === 'y') {
+                    return new THREE.Vector3(fromPoint.x, point.y, fromPoint.z);
+                } else if (axis === 'z') {
+                    return new THREE.Vector3(fromPoint.x, fromPoint.y, point.z);
+                }
+                return point;
+            }
+
+            snapToVertices(point) {
+                const snapThreshold = 0.5;
+                
+                // Get all vertices from all objects
+                for (const obj of this.objects) {
+                    const vertices = this.extractVertices(obj);
+                    
+                    for (const vertex of vertices) {
+                        const distance = point.distanceTo(vertex);
+                        if (distance < snapThreshold) {
+                            return vertex.clone();
+                        }
+                    }
+                }
+                
+                return null;
+            }
+
+            extractVertices(object) {
+                const vertices = [];
+                
+                object.traverse((child) => {
+                    if (child instanceof THREE.Mesh && child.geometry) {
+                        const geometry = child.geometry;
+                        
+                        // Get position attribute
+                        if (geometry.attributes && geometry.attributes.position) {
+                            const positions = geometry.attributes.position;
+                            const worldMatrix = child.matrixWorld;
+                            
+                            // Extract unique vertices
+                            const uniqueVertices = new Map();
+                            
+                            for (let i = 0; i < positions.count; i++) {
+                                const vertex = new THREE.Vector3(
+                                    positions.getX(i),
+                                    positions.getY(i),
+                                    positions.getZ(i)
+                                );
+                                
+                                // Transform to world coordinates
+                                vertex.applyMatrix4(worldMatrix);
+                                
+                                // Round to avoid duplicates
+                                const key = `${vertex.x.toFixed(2)},${vertex.y.toFixed(2)},${vertex.z.toFixed(2)}`;
+                                uniqueVertices.set(key, vertex);
+                            }
+                            
+                            vertices.push(...uniqueVertices.values());
+                        }
+                    }
+                });
+                
+                return vertices;
+            }
+
+            deleteSelected() {
+                if (!this.selectedObject) return;
+
+                this.scene.remove(this.selectedObject);
+                const index = this.objects.indexOf(this.selectedObject);
+                if (index > -1) {
+                    this.objects.splice(index, 1);
+                }
+                
+                this.transformControls.detach();
+                this.selectedObject = null;
+                document.getElementById('properties').classList.remove('visible');
+            }
+
+            duplicateSelected() {
+                if (!this.selectedObject) return;
+
+                const clone = this.selectedObject.clone();
+                clone.material = this.selectedObject.material.clone();
+                clone.position.x += 2;
+                clone.userData.name = `${this.selectedObject.userData.type} ${this.objects.length + 1}`;
+                
+                this.scene.add(clone);
+                this.objects.push(clone);
+                this.selectObject(clone);
+            }
+
+            changeObjectColor(color) {
+                if (!this.selectedObject || !this.selectedObject.material) return;
+                this.selectedObject.material.color.setStyle(color);
+            }
+
+            toggleGrid(visible) {
+                this.gridHelper.visible = visible;
+            }
+
+            resetCamera() {
+                this.camera.position.set(10, 10, 10);
+                this.orbitControls.target.set(0, 0, 0);
+                this.orbitControls.update();
+            }
+
+            clearScene() {
+                if (!confirm('Вы уверены что хотите удалить все объекты?')) return;
+
+                this.objects.forEach(obj => this.scene.remove(obj));
+                this.objects = [];
+                this.deselectObject();
+            }
+
+            exportScene() {
+                const sceneData = {
+                    objects: this.objects.map(obj => ({
+                        type: obj.userData.type,
+                        name: obj.userData.name,
+                        position: {
+                            x: obj.position.x,
+                            y: obj.position.y,
+                            z: obj.position.z
+                        },
+                        rotation: {
+                            x: obj.rotation.x,
+                            y: obj.rotation.y,
+                            z: obj.rotation.z
+                        },
+                        scale: {
+                            x: obj.scale.x,
+                            y: obj.scale.y,
+                            z: obj.scale.z
+                        },
+                        color: obj.material.color.getHexString()
+                    }))
+                };
+
+                const dataStr = JSON.stringify(sceneData, null, 2);
+                const dataBlob = new Blob([dataStr], { type: 'application/json' });
+                const url = URL.createObjectURL(dataBlob);
+                
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = 'scene.json';
+                link.click();
+                
+                URL.revokeObjectURL(url);
+            }
+
+            onWindowResize() {
+                const container = document.getElementById('canvas-container');
+                const width = container.clientWidth || window.innerWidth;
+                const height = container.clientHeight || window.innerHeight - 100;
+                
+                this.camera.aspect = width / height;
+                this.camera.updateProjectionMatrix();
+                this.renderer.setSize(width, height);
+                
+                console.log('Window resized:', width, 'x', height);
+            }
+
+            animate() {
+                requestAnimationFrame(() => this.animate());
+                this.orbitControls.update();
+                this.renderer.render(this.scene, this.camera);
+            }
+
+            loadFile(event) {
+                const file = event.target.files[0];
+                if (!file) return;
+
+                const fileName = file.name.toLowerCase();
+                const fileExtension = fileName.split('.').pop();
+
+                const reader = new FileReader();
+
+                if (fileExtension === 'skp') {
+                    this.loadSKPFile(file);
+                    return;
+                }
+
+                reader.onload = (e) => {
+                    const contents = e.target.result;
+
+                    try {
+                        switch (fileExtension) {
+                            case 'obj':
+                                this.loadOBJ(contents, fileName);
+                                break;
+                            case 'stl':
+                                this.loadSTL(contents, fileName);
+                                break;
+                            case 'dae':
+                                this.loadDAE(contents, fileName);
+                                break;
+                            case 'gltf':
+                            case 'glb':
+                                this.loadGLTF(contents, fileName, fileExtension === 'glb');
+                                break;
+                            default:
+                                alert('Неподдерживаемый формат файла: ' + fileExtension);
+                        }
+                    } catch (error) {
+                        console.error('Ошибка загрузки файла:', error);
+                        alert('Ошибка при загрузке файла: ' + error.message);
+                    }
+                };
+
+                if (fileExtension === 'glb') {
+                    reader.readAsArrayBuffer(file);
+                } else {
+                    reader.readAsText(file);
+                }
+
+                // Reset input
+                event.target.value = '';
+            }
+
+            loadSKPFile(file) {
+                // SKP файлы - проприетарный формат SketchUp
+                // Для открытия SKP файлов используем веб-сервис конвертации
+                alert('Формат SKP:\n\n' +
+                      'SKP - проприетарный формат SketchUp.\n\n' +
+                      'Для импорта, пожалуйста:\n' +
+                      '1. Откройте файл в SketchUp\n' +
+                      '2. Экспортируйте в формат:\n' +
+                      '   • COLLADA (.dae) - рекомендуется\n' +
+                      '   • OBJ (.obj)\n' +
+                      '   • STL (.stl)\n' +
+                      '   • GLTF/GLB (.gltf/.glb)\n\n' +
+                      'Затем импортируйте экспортированный файл сюда.');
+            }
+
+            loadOBJ(contents, fileName) {
+                const object = this.objLoader.parse(contents);
+                this.addImportedModel(object, fileName);
+                console.log('OBJ загружен:', fileName);
+            }
+
+            loadSTL(contents, fileName) {
+                const geometry = this.stlLoader.parse(contents);
+                const material = new THREE.MeshStandardMaterial({ 
+                    color: 0x808080,
+                    roughness: 0.5,
+                    metalness: 0.5
+                });
+                const mesh = new THREE.Mesh(geometry, material);
+                mesh.castShadow = true;
+                mesh.receiveShadow = true;
+                
+                this.addImportedModel(mesh, fileName);
+                console.log('STL загружен:', fileName);
+            }
+
+            loadDAE(contents, fileName) {
+                const collada = this.colladaLoader.parse(contents);
+                this.addImportedModel(collada.scene, fileName);
+                console.log('COLLADA загружен:', fileName);
+            }
+
+            loadGLTF(contents, fileName, isBinary) {
+                let data;
+                if (isBinary) {
+                    data = contents;
+                } else {
+                    data = JSON.parse(contents);
+                }
+
+                this.gltfLoader.parse(data, '', (gltf) => {
+                    this.addImportedModel(gltf.scene, fileName);
+                    console.log('GLTF/GLB загружен:', fileName);
+                }, (error) => {
+                    console.error('Ошибка парсинга GLTF:', error);
+                    alert('Ошибка при загрузке GLTF файла');
+                });
+            }
+
+            addImportedModel(model, fileName) {
+                // Normalize model scale and position
+                const box = new THREE.Box3().setFromObject(model);
+                const size = box.getSize(new THREE.Vector3());
+                const maxDim = Math.max(size.x, size.y, size.z);
+                const scale = 5 / maxDim; // Scale to fit in 5 units
+                
+                model.scale.set(scale, scale, scale);
+                
+                // Center the model
+                const center = box.getCenter(new THREE.Vector3());
+                model.position.sub(center.multiplyScalar(scale));
+                model.position.y = 0;
+
+                // Setup shadows
+                model.traverse((child) => {
+                    if (child instanceof THREE.Mesh) {
+                        child.castShadow = true;
+                        child.receiveShadow = true;
+                        
+                        // Ensure material is compatible
+                        if (!child.material) {
+                            child.material = new THREE.MeshStandardMaterial({ 
+                                color: 0x808080,
+                                roughness: 0.5,
+                                metalness: 0.5
+                            });
+                        }
+                    }
+                });
+
+                model.userData.type = 'Импортированная модель';
+                model.userData.name = fileName;
+                model.userData.isImported = true;
+
+                this.scene.add(model);
+                this.loadedModels.push(model);
+                this.objects.push(model);
+                this.selectObject(model);
+
+                alert(`Модель "${fileName}" успешно загружена!`);
+                
+                // Reset camera to see the model
+                this.resetCamera();
+            }
+        }
+
+        // Initialize the application
+        console.log('=== Starting application initialization ===');
+        
+        // Check if Three.js is loaded
+        if (typeof THREE === 'undefined') {
+            alert('ОШИБКА: Three.js не загружен! Проверьте подключение к интернету.');
+            console.error('Three.js is not loaded!');
+        } else {
+            console.log('Three.js loaded, version:', THREE.REVISION);
+        }
+        
+        // Wait for DOM to be fully loaded
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', function() {
+                console.log('DOM loaded, initializing app...');
+                try {
+                    window.app = new ModellerApp();
+                    console.log('Application initialized successfully!');
+                } catch (error) {
+                    console.error('Error initializing application:', error);
+                    alert('Ошибка инициализации: ' + error.message);
+                }
+            });
+        } else {
+            console.log('DOM already loaded, initializing app immediately...');
+            try {
+                window.app = new ModellerApp();
+                console.log('Application initialized successfully!');
+            } catch (error) {
+                console.error('Error initializing application:', error);
+                alert('Ошибка инициализации: ' + error.message);
+            }
+        }
+    </script>
+</body>
+</html>
