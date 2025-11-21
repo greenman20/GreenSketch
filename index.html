@@ -877,9 +877,12 @@
                 }
                 
                 try {
-                    const points = this.drawingPoints;
+                    const points = [...this.drawingPoints];
                     
-                    // Calculate average position and variance for each axis
+                    console.log('=== Создание грани ===');
+                    console.log('Точки:', points.map(p => `(${p.x.toFixed(2)}, ${p.y.toFixed(2)}, ${p.z.toFixed(2)})`));
+                    
+                    // Calculate variance for each axis to determine plane orientation
                     const avgX = points.reduce((sum, p) => sum + p.x, 0) / points.length;
                     const avgY = points.reduce((sum, p) => sum + p.y, 0) / points.length;
                     const avgZ = points.reduce((sum, p) => sum + p.z, 0) / points.length;
@@ -888,10 +891,9 @@
                     const yVar = Math.max(...points.map(p => Math.abs(p.y - avgY)));
                     const zVar = Math.max(...points.map(p => Math.abs(p.z - avgZ)));
                     
-                    console.log('Variance:', { xVar, yVar, zVar });
-                    console.log('Points:', points);
+                    console.log('Вариация:', { xVar: xVar.toFixed(3), yVar: yVar.toFixed(3), zVar: zVar.toFixed(3) });
+                    console.log('Среднее:', { avgX: avgX.toFixed(2), avgY: avgY.toFixed(2), avgZ: avgZ.toFixed(2) });
                     
-                    let geometry, mesh;
                     const material = new THREE.MeshStandardMaterial({ 
                         color: 0x4a9eff,
                         side: THREE.DoubleSide,
@@ -899,49 +901,83 @@
                         metalness: 0.3
                     });
                     
-                    // XZ plane (horizontal - floor/ceiling)
+                    let vertices = [];
+                    let mesh;
+                    
+                    // Horizontal plane (Y constant) - пол/потолок
                     if (yVar < 0.5) {
-                        console.log('Creating horizontal face (XZ plane)');
-                        const points2D = points.map(p => new THREE.Vector2(p.x, p.z));
-                        const shape = new THREE.Shape(points2D);
-                        geometry = new THREE.ShapeGeometry(shape);
+                        console.log('→ Горизонтальная грань (пол/потолок, Y=' + avgY.toFixed(2) + ')');
+                        
+                        // Create vertices directly in 3D space
+                        for (let i = 0; i < points.length; i++) {
+                            vertices.push(new THREE.Vector3(points[i].x, avgY, points[i].z));
+                        }
+                        
+                        const geometry = new THREE.BufferGeometry().setFromPoints(vertices);
+                        
+                        // Create faces (triangulate)
+                        const indices = [];
+                        for (let i = 1; i < vertices.length - 1; i++) {
+                            indices.push(0, i, i + 1);
+                        }
+                        geometry.setIndex(indices);
+                        geometry.computeVertexNormals();
                         
                         mesh = new THREE.Mesh(geometry, material);
-                        mesh.rotation.x = -Math.PI / 2;
-                        mesh.position.y = avgY;
                     }
-                    // XY plane (vertical wall, facing Z direction)
+                    // Vertical plane (Z constant) - стена параллельная XY
                     else if (zVar < 0.5) {
-                        console.log('Creating vertical face facing Z (XY plane)');
-                        const points2D = points.map(p => new THREE.Vector2(p.x, p.y));
-                        const shape = new THREE.Shape(points2D);
-                        geometry = new THREE.ShapeGeometry(shape);
+                        console.log('→ Вертикальная грань (стена Z=' + avgZ.toFixed(2) + ')');
+                        
+                        for (let i = 0; i < points.length; i++) {
+                            vertices.push(new THREE.Vector3(points[i].x, points[i].y, avgZ));
+                        }
+                        
+                        const geometry = new THREE.BufferGeometry().setFromPoints(vertices);
+                        const indices = [];
+                        for (let i = 1; i < vertices.length - 1; i++) {
+                            indices.push(0, i, i + 1);
+                        }
+                        geometry.setIndex(indices);
+                        geometry.computeVertexNormals();
                         
                         mesh = new THREE.Mesh(geometry, material);
-                        // No rotation needed for XY plane
-                        mesh.position.z = avgZ;
                     }
-                    // YZ plane (vertical wall, facing X direction)
+                    // Vertical plane (X constant) - стена параллельная YZ
                     else if (xVar < 0.5) {
-                        console.log('Creating vertical face facing X (YZ plane)');
-                        const points2D = points.map(p => new THREE.Vector2(p.z, p.y));
-                        const shape = new THREE.Shape(points2D);
-                        geometry = new THREE.ShapeGeometry(shape);
+                        console.log('→ Вертикальная грань (стена X=' + avgX.toFixed(2) + ')');
+                        
+                        for (let i = 0; i < points.length; i++) {
+                            vertices.push(new THREE.Vector3(avgX, points[i].y, points[i].z));
+                        }
+                        
+                        const geometry = new THREE.BufferGeometry().setFromPoints(vertices);
+                        const indices = [];
+                        for (let i = 1; i < vertices.length - 1; i++) {
+                            indices.push(0, i, i + 1);
+                        }
+                        geometry.setIndex(indices);
+                        geometry.computeVertexNormals();
                         
                         mesh = new THREE.Mesh(geometry, material);
-                        mesh.rotation.y = Math.PI / 2;
-                        mesh.position.x = avgX;
                     }
-                    // Default: try horizontal
+                    // Non-planar - use horizontal as default
                     else {
-                        console.log('Non-planar, defaulting to horizontal');
-                        const points2D = points.map(p => new THREE.Vector2(p.x, p.z));
-                        const shape = new THREE.Shape(points2D);
-                        geometry = new THREE.ShapeGeometry(shape);
+                        console.log('→ Не-плоская форма, используем горизонталь по умолчанию');
+                        
+                        for (let i = 0; i < points.length; i++) {
+                            vertices.push(new THREE.Vector3(points[i].x, avgY, points[i].z));
+                        }
+                        
+                        const geometry = new THREE.BufferGeometry().setFromPoints(vertices);
+                        const indices = [];
+                        for (let i = 1; i < vertices.length - 1; i++) {
+                            indices.push(0, i, i + 1);
+                        }
+                        geometry.setIndex(indices);
+                        geometry.computeVertexNormals();
                         
                         mesh = new THREE.Mesh(geometry, material);
-                        mesh.rotation.x = -Math.PI / 2;
-                        mesh.position.y = avgY;
                     }
                     
                     mesh.castShadow = true;
@@ -952,9 +988,10 @@
                     this.scene.add(mesh);
                     this.objects.push(mesh);
                     
-                    console.log('Грань создана! Позиция:', mesh.position);
+                    console.log('✓ Грань создана успешно!');
+                    console.log('Позиция меша:', mesh.position);
                 } catch (error) {
-                    console.error('Ошибка создания грани:', error);
+                    console.error('✗ Ошибка создания грани:', error);
                     alert('Ошибка создания грани: ' + error.message);
                 }
             }
