@@ -1088,7 +1088,33 @@
                     this.drawSnapIndicator(snapInfo.point);
                     this.showInferenceTooltip(screenX, screenY, snapInfo.label, snapInfo.type);
                 }
-            }"}, {"old_string": "            checkPointSnap(point) {\n                // Check distance to existing drawing points\n                for (let i = 0; i < this.drawingPoints.length; i++) {\n                    const dist = point.distanceTo(this.drawingPoints[i]);\n                    if (dist < this.snapDistance) {\n                        if (i === 0 && this.drawingPoints.length > 2) {\n                            return { point: this.drawingPoints[i], label: '\u041d\u0430\u0447\u0430\u043b\u044c\u043d\u0430\u044f \u0442\u043e\u0447\u043a\u0430', type: 'endpoint' };\n                        }\n                        return { point: this.drawingPoints[i], label: '\u0422\u043e\u0447\u043a\u0430', type: 'endpoint' };\n                    }\n                }\n                \n                return null;\n            }", "new_string": "            checkPointSnap(point) {\n                // Check distance to existing drawing points\n                for (let i = 0; i < this.drawingPoints.length; i++) {\n                    const dist = point.distanceTo(this.drawingPoints[i]);\n                    if (dist < this.snapDistance) {\n                        if (i === 0 && this.drawingPoints.length > 2) {\n                            return { point: this.drawingPoints[i], label: '\u041d\u0430\u0447\u0430\u043b\u044c\u043d\u0430\u044f \u0442\u043e\u0447\u043a\u0430', type: 'endpoint' };\n                        }\n                        return { point: this.drawingPoints[i], label: '\u0422\u043e\u0447\u043a\u0430', type: 'endpoint' };\n                    }\n                }\n                \n                // Check distance to vertices of existing objects\n                for (const obj of this.objects) {\n                    const vertices = this.extractVertices(obj);\n                    for (const vertex of vertices) {\n                        const dist = point.distanceTo(vertex);\n                        if (dist < this.snapDistance) {\n                            return { point: vertex, label: '\u0412\u0435\u0440\u0448\u0438\u043d\u0430 \u043e\u0431\u044a\u0435\u043a\u0442\u0430', type: 'endpoint' };\n                        }\n                    }\n                }\n                \n                return null;\n            }"}]
+            }
+
+            checkPointSnap(point) {
+                // Check distance to existing drawing points
+                for (let i = 0; i < this.drawingPoints.length; i++) {
+                    const dist = point.distanceTo(this.drawingPoints[i]);
+                    if (dist < this.snapDistance) {
+                        if (i === 0 && this.drawingPoints.length > 2) {
+                            return { point: this.drawingPoints[i], label: 'Начальная точка', type: 'endpoint' };
+                        }
+                        return { point: this.drawingPoints[i], label: 'Точка', type: 'endpoint' };
+                    }
+                }
+                
+                // Check distance to vertices of existing objects
+                for (const obj of this.objects) {
+                    const vertices = this.extractVertices(obj);
+                    for (const vertex of vertices) {
+                        const dist = point.distanceTo(vertex);
+                        if (dist < this.snapDistance) {
+                            return { point: vertex, label: 'Вершина объекта', type: 'endpoint' };
+                        }
+                    }
+                }
+                
+                return null;
+            }
 
             snapToAxis(point, fromPoint) {
                 const delta = new THREE.Vector3().subVectors(point, fromPoint);
