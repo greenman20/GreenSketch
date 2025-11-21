@@ -1007,13 +1007,33 @@
             
             getSnappedPoint() {
                 this.raycaster.setFromCamera(this.mouse, this.camera);
-                const groundPlane = this.scene.children.find(child => child.userData.isGround);
-                const intersectables = [groundPlane, ...this.objects];
-                const intersects = this.raycaster.intersectObjects(intersectables, true);
                 
-                if (intersects.length === 0) return null;
+                let point = null;
                 
-                let point = intersects[0].point.clone();
+                // If we have a previous point and axis is locked, use helper plane
+                if (this.drawingPoints.length > 0 && this.lockedAxis) {
+                    const lastPoint = this.drawingPoints[this.drawingPoints.length - 1];
+                    point = this.getRayPointOnAxisPlane(lastPoint, this.lockedAxis);
+                } else {
+                    // Normal intersection with ground and objects
+                    const groundPlane = this.scene.children.find(child => child.userData.isGround);
+                    const intersectables = [groundPlane, ...this.objects];
+                    const intersects = this.raycaster.intersectObjects(intersectables, true);
+                    
+                    if (intersects.length === 0) {
+                        // If no intersection, try to project onto a plane at last point height
+                        if (this.drawingPoints.length > 0) {
+                            const lastPoint = this.drawingPoints[this.drawingPoints.length - 1];
+                            point = this.getRayPointOnPlane(lastPoint);
+                        } else {
+                            return null;
+                        }
+                    } else {
+                        point = intersects[0].point.clone();
+                    }
+                }
+                
+                if (!point) return null;
                 
                 // Check for vertex snapping first
                 const vertexSnap = this.snapToVertices(point);
@@ -1043,6 +1063,53 @@
                 point.z = Math.round(point.z * 2) / 2;
                 
                 return point;
+            }
+            
+            getRayPointOnPlane(referencePoint) {
+                // Create a plane at the reference point, facing the camera
+                const plane = new THREE.Plane();
+                const normal = new THREE.Vector3(0, 1, 0); // Horizontal plane
+                plane.setFromNormalAndCoplanarPoint(normal, referencePoint);
+                
+                const intersection = new THREE.Vector3();
+                this.raycaster.ray.intersectPlane(plane, intersection);
+                
+                return intersection;
+            }
+            
+            getRayPointOnAxisPlane(lastPoint, axis) {
+                // Create a plane perpendicular to the locked axis
+                const plane = new THREE.Plane();
+                let normal;
+                
+                if (axis === 'x') {
+                    // Plane perpendicular to X (YZ plane)
+                    normal = this.camera.position.clone().sub(lastPoint).normalize();
+                    normal.x = 0;
+                    normal.normalize();
+                } else if (axis === 'y') {
+                    // Plane perpendicular to Y (XZ plane) - but we want vertical drawing
+                    // Use camera direction but keep vertical
+                    normal = this.camera.position.clone().sub(lastPoint).normalize();
+                    normal.y = 0;
+                    normal.normalize();
+                } else if (axis === 'z') {
+                    // Plane perpendicular to Z (XY plane)
+                    normal = this.camera.position.clone().sub(lastPoint).normalize();
+                    normal.z = 0;
+                    normal.normalize();
+                }
+                
+                if (normal.length() === 0) {
+                    normal = new THREE.Vector3(0, 0, 1);
+                }
+                
+                plane.setFromNormalAndCoplanarPoint(normal, lastPoint);
+                
+                const intersection = new THREE.Vector3();
+                this.raycaster.ray.intersectPlane(plane, intersection);
+                
+                return intersection;
             }
 
             updateInferenceSystem(screenX, screenY) {
