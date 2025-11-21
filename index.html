@@ -445,9 +445,41 @@
                 this.gridHelper.material.transparent = true;
                 this.scene.add(this.gridHelper);
 
-                // Axes Helper
-                const axesHelper = new THREE.AxesHelper(5);
-                this.scene.add(axesHelper);
+                // Axes Helper - CUSTOM для SketchUp стиля
+                // В SketchUp: X=красная, Y=зелёная, Z=синяя(ВВЕРХ)
+                // Создаем собственные оси вместо стандартного AxesHelper
+                
+                const axisLength = 5;
+                const axisWidth = 3;
+                
+                // X axis (RED) - горизонталь вправо
+                const xGeometry = new THREE.BufferGeometry().setFromPoints([
+                    new THREE.Vector3(0, 0, 0),
+                    new THREE.Vector3(axisLength, 0, 0)
+                ]);
+                const xMaterial = new THREE.LineBasicMaterial({ color: 0xff0000, linewidth: axisWidth });
+                const xAxis = new THREE.Line(xGeometry, xMaterial);
+                this.scene.add(xAxis);
+                
+                // Y axis (GREEN) - горизонталь вперед (= Z в Three.js)
+                const yGeometry = new THREE.BufferGeometry().setFromPoints([
+                    new THREE.Vector3(0, 0, 0),
+                    new THREE.Vector3(0, 0, axisLength)
+                ]);
+                const yMaterial = new THREE.LineBasicMaterial({ color: 0x00ff00, linewidth: axisWidth });
+                const yAxis = new THREE.Line(yGeometry, yMaterial);
+                this.scene.add(yAxis);
+                
+                // Z axis (BLUE) - ВЕРТИКАЛЬ ВВЕРХ (= Y в Three.js)
+                const zGeometry = new THREE.BufferGeometry().setFromPoints([
+                    new THREE.Vector3(0, 0, 0),
+                    new THREE.Vector3(0, axisLength, 0)
+                ]);
+                const zMaterial = new THREE.LineBasicMaterial({ color: 0x0000ff, linewidth: axisWidth });
+                const zAxis = new THREE.Line(zGeometry, zMaterial);
+                this.scene.add(zAxis);
+                
+                console.log('Custom axes: X=Red→, Y=Green→, Z=Blue↑');
 
                 // Ground Plane - semi-transparent so grid is visible
                 const groundGeometry = new THREE.PlaneGeometry(40, 40);
