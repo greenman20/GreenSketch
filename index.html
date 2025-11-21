@@ -422,23 +422,28 @@
                 directionalLight.shadow.camera.bottom = -20;
                 this.scene.add(directionalLight);
 
-                // Grid
-                this.gridHelper = new THREE.GridHelper(20, 20, 0x444444, 0x222222);
+                // Grid - more visible
+                this.gridHelper = new THREE.GridHelper(40, 40, 0x888888, 0x444444);
+                this.gridHelper.material.opacity = 0.5;
+                this.gridHelper.material.transparent = true;
                 this.scene.add(this.gridHelper);
 
                 // Axes Helper
                 const axesHelper = new THREE.AxesHelper(5);
                 this.scene.add(axesHelper);
 
-                // Ground Plane
-                const groundGeometry = new THREE.PlaneGeometry(20, 20);
+                // Ground Plane - semi-transparent so grid is visible
+                const groundGeometry = new THREE.PlaneGeometry(40, 40);
                 const groundMaterial = new THREE.MeshStandardMaterial({ 
-                    color: 0x333333,
+                    color: 0x1a1a1a,
                     roughness: 0.8,
-                    metalness: 0.2
+                    metalness: 0.2,
+                    transparent: true,
+                    opacity: 0.3
                 });
                 const ground = new THREE.Mesh(groundGeometry, groundMaterial);
                 ground.rotation.x = -Math.PI / 2;
+                ground.position.y = -0.01; // Slightly below grid
                 ground.receiveShadow = true;
                 ground.userData.isGround = true;
                 this.scene.add(ground);
