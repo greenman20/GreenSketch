@@ -1099,24 +1099,24 @@
             
             getRayPointOnAxisPlane(lastPoint, axis) {
                 // Create a plane perpendicular to the locked axis
+                // Маппинг: SketchUp Z (вертикаль) = Three.js Y
                 const plane = new THREE.Plane();
                 let normal;
                 
                 if (axis === 'x') {
-                    // Plane perpendicular to X (YZ plane)
+                    // Red axis - X остаётся X
                     normal = this.camera.position.clone().sub(lastPoint).normalize();
                     normal.x = 0;
                     normal.normalize();
                 } else if (axis === 'y') {
-                    // Plane perpendicular to Y (XZ plane) - but we want vertical drawing
-                    // Use camera direction but keep vertical
-                    normal = this.camera.position.clone().sub(lastPoint).normalize();
-                    normal.y = 0;
-                    normal.normalize();
-                } else if (axis === 'z') {
-                    // Plane perpendicular to Z (XY plane)
+                    // Green axis - Y в SketchUp = Z в Three.js
                     normal = this.camera.position.clone().sub(lastPoint).normalize();
                     normal.z = 0;
+                    normal.normalize();
+                } else if (axis === 'z') {
+                    // Blue axis (VERTICAL) - Z в SketchUp = Y в Three.js
+                    normal = this.camera.position.clone().sub(lastPoint).normalize();
+                    normal.y = 0;
                     normal.normalize();
                 }
                 
@@ -1224,19 +1224,19 @@
                     };
                 }
                 
-                // Snap to Y axis (Green)
+                // Z axis SketchUp (Blue VERTICAL) = Y в Three.js
                 if (absX < threshold && absZ < threshold && absY > 0.5) {
                     return {
                         point: new THREE.Vector3(fromPoint.x, point.y, fromPoint.z),
-                        inference: { axis: 'y', color: 0x00ff00, label: 'На оси Y' }
+                        inference: { axis: 'z', color: 0x0000ff, label: 'Ось Z (синяя ↑ ВВЕРХ)' }
                     };
                 }
                 
-                // Snap to Z axis (Blue)
+                // Y axis SketchUp (Green) = Z в Three.js
                 if (absX < threshold && absY < threshold && absZ > 0.5) {
                     return {
                         point: new THREE.Vector3(fromPoint.x, fromPoint.y, point.z),
-                        inference: { axis: 'z', color: 0x0000ff, label: 'На оси Z' }
+                        inference: { axis: 'y', color: 0x00ff00, label: 'Ось Y (зелёная ↔)' }
                     };
                 }
                 
@@ -1251,14 +1251,19 @@
                 
                 const threshold = 0.3;
                 
+                // X axis (Red) - без изменений
                 if (absY < threshold && absZ < threshold && absX > 0.5) {
-                    return { axis: 'x', color: 0xff0000, label: 'На оси X', type: 'on-axis' };
+                    return { axis: 'x', color: 0xff0000, label: 'Ось X (красная →)', type: 'on-axis' };
                 }
+                
+                // Z axis SketchUp (Blue VERTICAL) = Y в Three.js  
                 if (absX < threshold && absZ < threshold && absY > 0.5) {
-                    return { axis: 'y', color: 0x00ff00, label: 'На оси Y', type: 'on-axis' };
+                    return { axis: 'z', color: 0x0000ff, label: 'Ось Z (синяя ↑ ВВЕРХ)', type: 'on-axis' };
                 }
+                
+                // Y axis SketchUp (Green) = Z в Three.js
                 if (absX < threshold && absY < threshold && absZ > 0.5) {
-                    return { axis: 'z', color: 0x0000ff, label: 'На оси Z', type: 'on-axis' };
+                    return { axis: 'y', color: 0x00ff00, label: 'Ось Y (зелёная ↔)', type: 'on-axis' };
                 }
                 
                 return null;
@@ -1337,12 +1342,19 @@
 
             forceAxisLock(point, fromPoint, axis) {
                 // Force point to specific axis
+                // В SketchUp: X=красная, Y=зелёная, Z=синяя(вертикаль)
+                // В Three.js: X=право, Y=вверх, Z=вперёд
+                // Маппинг: SketchUp.Z -> Three.Y (вертикаль)
+                
                 if (axis === 'x') {
+                    // Красная ось - движение по X
                     return new THREE.Vector3(point.x, fromPoint.y, fromPoint.z);
                 } else if (axis === 'y') {
-                    return new THREE.Vector3(fromPoint.x, point.y, fromPoint.z);
-                } else if (axis === 'z') {
+                    // Зелёная ось - движение по Z в Three.js
                     return new THREE.Vector3(fromPoint.x, fromPoint.y, point.z);
+                } else if (axis === 'z') {
+                    // Синяя ось - ВЕРТИКАЛЬ = движение по Y в Three.js
+                    return new THREE.Vector3(fromPoint.x, point.y, fromPoint.z);
                 }
                 return point;
             }
