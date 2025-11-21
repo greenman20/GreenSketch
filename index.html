@@ -162,8 +162,11 @@
     <div id="container">
         <div id="toolbar">
             <div class="tool-section">
-                <button class="tool-btn" onclick="app.setTool('select')" title="Выбор (V)">
+                <button class="tool-btn" id="selectTool" onclick="app.setTool('select')" title="Выбор (V)">
                     <span>✋</span> Выбор
+                </button>
+                <button class="tool-btn" id="pencilTool" onclick="app.setTool('pencil')" title="Карандаш (L)">
+                    <span>✏️</span> Карандаш
                 </button>
             </div>
             
@@ -246,6 +249,8 @@
                 <p>• D - дублировать</p>
                 <p>• Delete - удалить</p>
                 <p>• V - инструмент выбора</p>
+                <p>• L - Карандаш (рисование)</p>
+                <p>• Enter - завершить рисование</p>
                 <p></p>
                 <p><strong>Импорт файлов:</strong></p>
                 <p>• SKP (SketchUp)</p>
@@ -309,6 +314,14 @@
                 this.raycaster = new THREE.Raycaster();
                 this.mouse = new THREE.Vector2();
                 this.loadedModels = [];
+                
+                // Pencil tool properties
+                this.currentTool = 'select';
+                this.drawingPoints = [];
+                this.drawingLine = null;
+                this.previewLine = null;
+                this.pointMarkers = [];
+                this.drawingPlane = null;
                 
                 // Initialize loaders
                 this.objLoader = new THREE.OBJLoader();
@@ -400,17 +413,22 @@
             setupEventListeners() {
                 // Mouse events for selection
                 this.renderer.domElement.addEventListener('click', (e) => this.onMouseClick(e));
+                this.renderer.domElement.addEventListener('mousemove', (e) => this.onMouseMove(e));
                 
                 // Keyboard shortcuts
                 window.addEventListener('keydown', (e) => this.onKeyDown(e));
             }
 
             onMouseClick(event) {
-                const container = document.getElementById('canvas-container');
                 const rect = this.renderer.domElement.getBoundingClientRect();
                 
                 this.mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
                 this.mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+
+                if (this.currentTool === 'pencil') {
+                    this.addDrawingPoint();
+                    return;
+                }
 
                 this.raycaster.setFromCamera(this.mouse, this.camera);
                 const intersects = this.raycaster.intersectObjects(this.objects);
@@ -420,6 +438,16 @@
                 } else {
                     this.deselectObject();
                 }
+            }
+
+            onMouseMove(event) {
+                if (this.currentTool !== 'pencil' || this.drawingPoints.length === 0) return;
+
+                const rect = this.renderer.domElement.getBoundingClientRect();
+                this.mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+                this.mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+
+                this.updatePreviewLine();
             }
 
             onKeyDown(event) {
@@ -435,8 +463,18 @@
                     this.duplicateSelected();
                 } else if (event.key === 'v' || event.key === 'V') {
                     this.setTool('select');
+                } else if (event.key === 'l' || event.key === 'L') {
+                    this.setTool('pencil');
+                } else if (event.key === 'Enter') {
+                    if (this.currentTool === 'pencil') {
+                        this.finishDrawing();
+                    }
                 } else if (event.key === 'Escape') {
-                    this.deselectObject();
+                    if (this.currentTool === 'pencil' && this.drawingPoints.length > 0) {
+                        this.cancelDrawing();
+                    } else {
+                        this.deselectObject();
+                    }
                 }
             }
 
@@ -570,9 +608,201 @@
             }
 
             setTool(tool) {
+                // Remove active class from all tool buttons
+                document.querySelectorAll('.tool-btn').forEach(btn => btn.classList.remove('active'));
+                
+                this.currentTool = tool;
+                
                 if (tool === 'select') {
+                    document.getElementById('selectTool').classList.add('active');
                     this.transformControls.setMode('translate');
+                    this.cancelDrawing();
+                    this.orbitControls.enabled = true;
+                } else if (tool === 'pencil') {
+                    document.getElementById('pencilTool').classList.add('active');
+                    this.deselectObject();
+                    this.transformControls.detach();
+                    this.cancelDrawing();
+                    // Keep orbit controls enabled for camera movement
                 }
+            }
+
+            addDrawingPoint() {
+                // Cast ray to find intersection point
+                this.raycaster.setFromCamera(this.mouse, this.camera);
+                
+                // Check intersection with ground or existing objects
+                const groundPlane = this.scene.children.find(child => child.userData.isGround);
+                const intersectables = [groundPlane, ...this.objects];
+                const intersects = this.raycaster.intersectObjects(intersectables);
+                
+                if (intersects.length === 0) return;
+                
+                const point = intersects[0].point.clone();
+                
+                // Snap to grid (optional)
+                point.x = Math.round(point.x * 2) / 2;
+                point.y = Math.round(point.y * 2) / 2;
+                point.z = Math.round(point.z * 2) / 2;
+                
+                // Add point marker
+                const markerGeometry = new THREE.SphereGeometry(0.1, 16, 16);
+                const markerMaterial = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+                const marker = new THREE.Mesh(markerGeometry, markerMaterial);
+                marker.position.copy(point);
+                this.scene.add(marker);
+                this.pointMarkers.push(marker);
+                
+                this.drawingPoints.push(point);
+                
+                // Update drawing line
+                this.updateDrawingLine();
+            }
+
+            updateDrawingLine() {
+                // Remove old line
+                if (this.drawingLine) {
+                    this.scene.remove(this.drawingLine);
+                }
+                
+                if (this.drawingPoints.length < 2) return;
+                
+                // Create line geometry
+                const geometry = new THREE.BufferGeometry().setFromPoints(this.drawingPoints);
+                const material = new THREE.LineBasicMaterial({ 
+                    color: 0x00ff00,
+                    linewidth: 2
+                });
+                
+                this.drawingLine = new THREE.Line(geometry, material);
+                this.scene.add(this.drawingLine);
+            }
+
+            updatePreviewLine() {
+                // Remove old preview
+                if (this.previewLine) {
+                    this.scene.remove(this.previewLine);
+                }
+                
+                if (this.drawingPoints.length === 0) return;
+                
+                // Get mouse position in 3D space
+                this.raycaster.setFromCamera(this.mouse, this.camera);
+                const groundPlane = this.scene.children.find(child => child.userData.isGround);
+                const intersectables = [groundPlane, ...this.objects];
+                const intersects = this.raycaster.intersectObjects(intersectables);
+                
+                if (intersects.length === 0) return;
+                
+                const point = intersects[0].point.clone();
+                point.x = Math.round(point.x * 2) / 2;
+                point.y = Math.round(point.y * 2) / 2;
+                point.z = Math.round(point.z * 2) / 2;
+                
+                // Create preview line from last point to cursor
+                const lastPoint = this.drawingPoints[this.drawingPoints.length - 1];
+                const geometry = new THREE.BufferGeometry().setFromPoints([lastPoint, point]);
+                const material = new THREE.LineDashedMaterial({ 
+                    color: 0xffff00,
+                    linewidth: 1,
+                    dashSize: 0.2,
+                    gapSize: 0.1
+                });
+                
+                this.previewLine = new THREE.Line(geometry, material);
+                this.previewLine.computeLineDistances();
+                this.scene.add(this.previewLine);
+            }
+
+            finishDrawing() {
+                if (this.drawingPoints.length < 2) {
+                    alert('Нужно минимум 2 точки для создания линии');
+                    return;
+                }
+                
+                // Check if shape is closed (first and last points are close)
+                const firstPoint = this.drawingPoints[0];
+                const lastPoint = this.drawingPoints[this.drawingPoints.length - 1];
+                const distance = firstPoint.distanceTo(lastPoint);
+                const isClosed = distance < 0.5 && this.drawingPoints.length > 2;
+                
+                if (isClosed) {
+                    // Create filled shape
+                    this.createShape();
+                } else {
+                    // Create line
+                    this.createLine();
+                }
+                
+                this.cancelDrawing();
+            }
+
+            createLine() {
+                // Create a tube geometry for better visibility
+                const curve = new THREE.CatmullRomCurve3(this.drawingPoints);
+                const tubeGeometry = new THREE.TubeGeometry(curve, this.drawingPoints.length * 2, 0.05, 8, false);
+                const material = new THREE.MeshStandardMaterial({ 
+                    color: 0x808080,
+                    roughness: 0.5,
+                    metalness: 0.5
+                });
+                
+                const line = new THREE.Mesh(tubeGeometry, material);
+                line.castShadow = true;
+                line.receiveShadow = true;
+                line.userData.type = 'Линия';
+                line.userData.name = `Линия ${this.objects.length + 1}`;
+                
+                this.scene.add(line);
+                this.objects.push(line);
+            }
+
+            createShape() {
+                // Close the shape
+                const points2D = this.drawingPoints.map(p => new THREE.Vector2(p.x, p.z));
+                
+                // Create shape
+                const shape = new THREE.Shape(points2D);
+                const geometry = new THREE.ShapeGeometry(shape);
+                
+                const material = new THREE.MeshStandardMaterial({ 
+                    color: 0x808080,
+                    side: THREE.DoubleSide,
+                    roughness: 0.5,
+                    metalness: 0.5
+                });
+                
+                const mesh = new THREE.Mesh(geometry, material);
+                mesh.rotation.x = -Math.PI / 2;
+                mesh.position.y = this.drawingPoints[0].y;
+                mesh.castShadow = true;
+                mesh.receiveShadow = true;
+                mesh.userData.type = 'Форма';
+                mesh.userData.name = `Форма ${this.objects.length + 1}`;
+                
+                this.scene.add(mesh);
+                this.objects.push(mesh);
+            }
+
+            cancelDrawing() {
+                // Remove all point markers
+                this.pointMarkers.forEach(marker => this.scene.remove(marker));
+                this.pointMarkers = [];
+                
+                // Remove drawing line
+                if (this.drawingLine) {
+                    this.scene.remove(this.drawingLine);
+                    this.drawingLine = null;
+                }
+                
+                // Remove preview line
+                if (this.previewLine) {
+                    this.scene.remove(this.previewLine);
+                    this.previewLine = null;
+                }
+                
+                // Clear points
+                this.drawingPoints = [];
             }
 
             deleteSelected() {
