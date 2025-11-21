@@ -219,6 +219,9 @@
             </div>
 
             <div class="tool-section">
+                <button class="tool-btn" onclick="document.getElementById('fileInput').click()" title="Импорт 3D модели">
+                    <span>📁</span> Импорт
+                </button>
                 <button class="tool-btn" onclick="app.exportScene()" title="Экспорт">
                     <span>💾</span> Экспорт
                 </button>
@@ -243,6 +246,12 @@
                 <p>• D - дублировать</p>
                 <p>• Delete - удалить</p>
                 <p>• V - инструмент выбора</p>
+                <p></p>
+                <p><strong>Импорт файлов:</strong></p>
+                <p>• SKP (SketchUp)</p>
+                <p>• DAE (COLLADA)</p>
+                <p>• OBJ, STL, FBX</p>
+                <p>• GLTF, GLB</p>
             </div>
 
             <div id="properties">
@@ -267,6 +276,9 @@
         </div>
     </div>
 
+    <!-- Hidden file input -->
+    <input type="file" id="fileInput" accept=".skp,.dae,.obj,.stl,.fbx,.gltf,.glb" style="display: none;" onchange="app.loadFile(event)">
+
     <!-- Three.js Library -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     
@@ -275,6 +287,13 @@
     
     <!-- TransformControls -->
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/TransformControls.js"></script>
+    
+    <!-- Loaders for different file formats -->
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/OBJLoader.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/STLLoader.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/ColladaLoader.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/FBXLoader.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
 
     <script>
         class ModellerApp {
@@ -289,6 +308,13 @@
                 this.gridHelper = null;
                 this.raycaster = new THREE.Raycaster();
                 this.mouse = new THREE.Vector2();
+                this.loadedModels = [];
+                
+                // Initialize loaders
+                this.objLoader = new THREE.OBJLoader();
+                this.stlLoader = new THREE.STLLoader();
+                this.colladaLoader = new THREE.ColladaLoader();
+                this.gltfLoader = new THREE.GLTFLoader();
                 
                 this.init();
                 this.animate();
@@ -646,6 +672,162 @@
                 requestAnimationFrame(() => this.animate());
                 this.orbitControls.update();
                 this.renderer.render(this.scene, this.camera);
+            }
+
+            loadFile(event) {
+                const file = event.target.files[0];
+                if (!file) return;
+
+                const fileName = file.name.toLowerCase();
+                const fileExtension = fileName.split('.').pop();
+
+                const reader = new FileReader();
+
+                if (fileExtension === 'skp') {
+                    this.loadSKPFile(file);
+                    return;
+                }
+
+                reader.onload = (e) => {
+                    const contents = e.target.result;
+
+                    try {
+                        switch (fileExtension) {
+                            case 'obj':
+                                this.loadOBJ(contents, fileName);
+                                break;
+                            case 'stl':
+                                this.loadSTL(contents, fileName);
+                                break;
+                            case 'dae':
+                                this.loadDAE(contents, fileName);
+                                break;
+                            case 'gltf':
+                            case 'glb':
+                                this.loadGLTF(contents, fileName, fileExtension === 'glb');
+                                break;
+                            default:
+                                alert('Неподдерживаемый формат файла: ' + fileExtension);
+                        }
+                    } catch (error) {
+                        console.error('Ошибка загрузки файла:', error);
+                        alert('Ошибка при загрузке файла: ' + error.message);
+                    }
+                };
+
+                if (fileExtension === 'glb') {
+                    reader.readAsArrayBuffer(file);
+                } else {
+                    reader.readAsText(file);
+                }
+
+                // Reset input
+                event.target.value = '';
+            }
+
+            loadSKPFile(file) {
+                // SKP файлы - проприетарный формат SketchUp
+                // Для открытия SKP файлов используем веб-сервис конвертации
+                alert('Формат SKP:\n\n' +
+                      'SKP - проприетарный формат SketchUp.\n\n' +
+                      'Для импорта, пожалуйста:\n' +
+                      '1. Откройте файл в SketchUp\n' +
+                      '2. Экспортируйте в формат:\n' +
+                      '   • COLLADA (.dae) - рекомендуется\n' +
+                      '   • OBJ (.obj)\n' +
+                      '   • STL (.stl)\n' +
+                      '   • GLTF/GLB (.gltf/.glb)\n\n' +
+                      'Затем импортируйте экспортированный файл сюда.');
+            }
+
+            loadOBJ(contents, fileName) {
+                const object = this.objLoader.parse(contents);
+                this.addImportedModel(object, fileName);
+                console.log('OBJ загружен:', fileName);
+            }
+
+            loadSTL(contents, fileName) {
+                const geometry = this.stlLoader.parse(contents);
+                const material = new THREE.MeshStandardMaterial({ 
+                    color: 0x808080,
+                    roughness: 0.5,
+                    metalness: 0.5
+                });
+                const mesh = new THREE.Mesh(geometry, material);
+                mesh.castShadow = true;
+                mesh.receiveShadow = true;
+                
+                this.addImportedModel(mesh, fileName);
+                console.log('STL загружен:', fileName);
+            }
+
+            loadDAE(contents, fileName) {
+                const collada = this.colladaLoader.parse(contents);
+                this.addImportedModel(collada.scene, fileName);
+                console.log('COLLADA загружен:', fileName);
+            }
+
+            loadGLTF(contents, fileName, isBinary) {
+                let data;
+                if (isBinary) {
+                    data = contents;
+                } else {
+                    data = JSON.parse(contents);
+                }
+
+                this.gltfLoader.parse(data, '', (gltf) => {
+                    this.addImportedModel(gltf.scene, fileName);
+                    console.log('GLTF/GLB загружен:', fileName);
+                }, (error) => {
+                    console.error('Ошибка парсинга GLTF:', error);
+                    alert('Ошибка при загрузке GLTF файла');
+                });
+            }
+
+            addImportedModel(model, fileName) {
+                // Normalize model scale and position
+                const box = new THREE.Box3().setFromObject(model);
+                const size = box.getSize(new THREE.Vector3());
+                const maxDim = Math.max(size.x, size.y, size.z);
+                const scale = 5 / maxDim; // Scale to fit in 5 units
+                
+                model.scale.set(scale, scale, scale);
+                
+                // Center the model
+                const center = box.getCenter(new THREE.Vector3());
+                model.position.sub(center.multiplyScalar(scale));
+                model.position.y = 0;
+
+                // Setup shadows
+                model.traverse((child) => {
+                    if (child instanceof THREE.Mesh) {
+                        child.castShadow = true;
+                        child.receiveShadow = true;
+                        
+                        // Ensure material is compatible
+                        if (!child.material) {
+                            child.material = new THREE.MeshStandardMaterial({ 
+                                color: 0x808080,
+                                roughness: 0.5,
+                                metalness: 0.5
+                            });
+                        }
+                    }
+                });
+
+                model.userData.type = 'Импортированная модель';
+                model.userData.name = fileName;
+                model.userData.isImported = true;
+
+                this.scene.add(model);
+                this.loadedModels.push(model);
+                this.objects.push(model);
+                this.selectObject(model);
+
+                alert(`Модель "${fileName}" успешно загружена!`);
+                
+                // Reset camera to see the model
+                this.resetCamera();
             }
         }
 
