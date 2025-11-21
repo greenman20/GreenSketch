@@ -156,6 +156,36 @@
             color: #fff;
             font-size: 14px;
         }
+
+        /* Inference tooltip */
+        #inference-tooltip {
+            position: absolute;
+            background: rgba(0, 0, 0, 0.9);
+            color: #fff;
+            padding: 5px 10px;
+            border-radius: 3px;
+            font-size: 12px;
+            pointer-events: none;
+            display: none;
+            z-index: 1000;
+            white-space: nowrap;
+        }
+
+        #inference-tooltip.visible {
+            display: block;
+        }
+
+        #inference-tooltip.endpoint {
+            color: #00ff00;
+        }
+
+        #inference-tooltip.on-edge {
+            color: #00ffff;
+        }
+
+        #inference-tooltip.on-axis {
+            color: #ffff00;
+        }
     </style>
 </head>
 <body>
@@ -254,6 +284,12 @@
                 <p>• C - замкнуть форму</p>
                 <p>• Клик на первую точку - замкнуть</p>
                 <p></p>
+                <p><strong>Умные подсказки:</strong></p>
+                <p>• Красная линия - ось X</p>
+                <p>• Зелёная линия - ось Y</p>
+                <p>• Синяя линия - ось Z</p>
+                <p>• Голубой круг - привязка к точке</p>
+                <p></p>
                 <p><strong>Импорт файлов:</strong></p>
                 <p>• SKP (SketchUp)</p>
                 <p>• DAE (COLLADA)</p>
@@ -280,6 +316,9 @@
                     <input type="number" id="objPosZ" step="0.1" onchange="app.updatePosition('z', this.value)">
                 </div>
             </div>
+
+            <!-- Inference tooltip -->
+            <div id="inference-tooltip"></div>
         </div>
     </div>
 
@@ -324,6 +363,13 @@
                 this.previewLine = null;
                 this.pointMarkers = [];
                 this.drawingPlane = null;
+                
+                // Inference system (like SketchUp)
+                this.inferenceLines = [];
+                this.snapPoints = [];
+                this.currentInference = null;
+                this.snapDistance = 0.5; // Distance for snapping
+                this.axisSnapAngle = 5; // Degrees for axis snapping
                 
                 // Initialize loaders
                 this.objLoader = new THREE.OBJLoader();
@@ -449,6 +495,7 @@
                 this.mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
                 this.mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
 
+                this.updateInferenceSystem(event.clientX, event.clientY);
                 this.updatePreviewLine();
             }
 
@@ -635,22 +682,9 @@
             }
 
             addDrawingPoint() {
-                // Cast ray to find intersection point
-                this.raycaster.setFromCamera(this.mouse, this.camera);
-                
-                // Check intersection with ground or existing objects
-                const groundPlane = this.scene.children.find(child => child.userData.isGround);
-                const intersectables = [groundPlane, ...this.objects];
-                const intersects = this.raycaster.intersectObjects(intersectables);
-                
-                if (intersects.length === 0) return;
-                
-                const point = intersects[0].point.clone();
-                
-                // Snap to grid (optional)
-                point.x = Math.round(point.x * 2) / 2;
-                point.y = Math.round(point.y * 2) / 2;
-                point.z = Math.round(point.z * 2) / 2;
+                // Get snapped point using inference system
+                const point = this.getSnappedPoint();
+                if (!point) return;
                 
                 // Check if clicking near first point to close shape
                 if (this.drawingPoints.length > 2) {
@@ -713,18 +747,9 @@
                 
                 if (this.drawingPoints.length === 0) return;
                 
-                // Get mouse position in 3D space
-                this.raycaster.setFromCamera(this.mouse, this.camera);
-                const groundPlane = this.scene.children.find(child => child.userData.isGround);
-                const intersectables = [groundPlane, ...this.objects];
-                const intersects = this.raycaster.intersectObjects(intersectables);
-                
-                if (intersects.length === 0) return;
-                
-                const point = intersects[0].point.clone();
-                point.x = Math.round(point.x * 2) / 2;
-                point.y = Math.round(point.y * 2) / 2;
-                point.z = Math.round(point.z * 2) / 2;
+                // Get mouse position in 3D space with snapping
+                const point = this.getSnappedPoint();
+                if (!point) return;
                 
                 // Create preview line from last point to cursor
                 const lastPoint = this.drawingPoints[this.drawingPoints.length - 1];
@@ -850,6 +875,198 @@
                 
                 // Clear points
                 this.drawingPoints = [];
+                
+                // Clear inference
+                this.clearInferenceLines();
+            }
+
+            // ============ INFERENCE SYSTEM (like SketchUp) ============
+            
+            getSnappedPoint() {
+                this.raycaster.setFromCamera(this.mouse, this.camera);
+                const groundPlane = this.scene.children.find(child => child.userData.isGround);
+                const intersectables = [groundPlane, ...this.objects];
+                const intersects = this.raycaster.intersectObjects(intersectables);
+                
+                if (intersects.length === 0) return null;
+                
+                let point = intersects[0].point.clone();
+                
+                // If we have a previous point, try axis snapping
+                if (this.drawingPoints.length > 0) {
+                    const lastPoint = this.drawingPoints[this.drawingPoints.length - 1];
+                    const snappedToAxis = this.snapToAxis(point, lastPoint);
+                    if (snappedToAxis) {
+                        point = snappedToAxis.point;
+                        this.currentInference = snappedToAxis.inference;
+                    }
+                }
+                
+                // Grid snapping
+                point.x = Math.round(point.x * 2) / 2;
+                point.y = Math.round(point.y * 2) / 2;
+                point.z = Math.round(point.z * 2) / 2;
+                
+                return point;
+            }
+
+            updateInferenceSystem(screenX, screenY) {
+                this.clearInferenceLines();
+                
+                if (this.drawingPoints.length === 0) return;
+                
+                const point = this.getSnappedPoint();
+                if (!point) return;
+                
+                const lastPoint = this.drawingPoints[this.drawingPoints.length - 1];
+                
+                // Check for axis alignment
+                const axisInfo = this.checkAxisAlignment(point, lastPoint);
+                if (axisInfo) {
+                    this.drawInferenceLine(lastPoint, point, axisInfo.color);
+                    this.showInferenceTooltip(screenX, screenY, axisInfo.label, axisInfo.type);
+                } else {
+                    this.hideInferenceTooltip();
+                }
+                
+                // Check snap to other points
+                const snapInfo = this.checkPointSnap(point);
+                if (snapInfo) {
+                    this.drawSnapIndicator(snapInfo.point);
+                    this.showInferenceTooltip(screenX, screenY, snapInfo.label, snapInfo.type);
+                }
+            }
+
+            snapToAxis(point, fromPoint) {
+                const delta = new THREE.Vector3().subVectors(point, fromPoint);
+                const distance = delta.length();
+                
+                if (distance < 0.1) return null;
+                
+                // Calculate angles relative to axes
+                const absX = Math.abs(delta.x);
+                const absY = Math.abs(delta.y);
+                const absZ = Math.abs(delta.z);
+                
+                const threshold = 0.3; // Snap threshold
+                
+                // Snap to X axis (Red)
+                if (absY < threshold && absZ < threshold && absX > 0.5) {
+                    return {
+                        point: new THREE.Vector3(point.x, fromPoint.y, fromPoint.z),
+                        inference: { axis: 'x', color: 0xff0000, label: 'На оси X' }
+                    };
+                }
+                
+                // Snap to Y axis (Green)
+                if (absX < threshold && absZ < threshold && absY > 0.5) {
+                    return {
+                        point: new THREE.Vector3(fromPoint.x, point.y, fromPoint.z),
+                        inference: { axis: 'y', color: 0x00ff00, label: 'На оси Y' }
+                    };
+                }
+                
+                // Snap to Z axis (Blue)
+                if (absX < threshold && absY < threshold && absZ > 0.5) {
+                    return {
+                        point: new THREE.Vector3(fromPoint.x, fromPoint.y, point.z),
+                        inference: { axis: 'z', color: 0x0000ff, label: 'На оси Z' }
+                    };
+                }
+                
+                return null;
+            }
+
+            checkAxisAlignment(point, fromPoint) {
+                const delta = new THREE.Vector3().subVectors(point, fromPoint);
+                const absX = Math.abs(delta.x);
+                const absY = Math.abs(delta.y);
+                const absZ = Math.abs(delta.z);
+                
+                const threshold = 0.3;
+                
+                if (absY < threshold && absZ < threshold && absX > 0.5) {
+                    return { axis: 'x', color: 0xff0000, label: 'На оси X', type: 'on-axis' };
+                }
+                if (absX < threshold && absZ < threshold && absY > 0.5) {
+                    return { axis: 'y', color: 0x00ff00, label: 'На оси Y', type: 'on-axis' };
+                }
+                if (absX < threshold && absY < threshold && absZ > 0.5) {
+                    return { axis: 'z', color: 0x0000ff, label: 'На оси Z', type: 'on-axis' };
+                }
+                
+                return null;
+            }
+
+            checkPointSnap(point) {
+                // Check distance to existing drawing points
+                for (let i = 0; i < this.drawingPoints.length; i++) {
+                    const dist = point.distanceTo(this.drawingPoints[i]);
+                    if (dist < this.snapDistance) {
+                        if (i === 0 && this.drawingPoints.length > 2) {
+                            return { point: this.drawingPoints[i], label: 'Начальная точка', type: 'endpoint' };
+                        }
+                        return { point: this.drawingPoints[i], label: 'Точка', type: 'endpoint' };
+                    }
+                }
+                
+                return null;
+            }
+
+            drawInferenceLine(from, to, color) {
+                const geometry = new THREE.BufferGeometry().setFromPoints([from, to]);
+                const material = new THREE.LineBasicMaterial({ 
+                    color: color,
+                    linewidth: 2,
+                    transparent: true,
+                    opacity: 0.6
+                });
+                
+                const line = new THREE.Line(geometry, material);
+                this.scene.add(line);
+                this.inferenceLines.push(line);
+            }
+
+            drawSnapIndicator(point) {
+                const geometry = new THREE.SphereGeometry(0.15, 16, 16);
+                const material = new THREE.MeshBasicMaterial({ 
+                    color: 0x00ffff,
+                    transparent: true,
+                    opacity: 0.5
+                });
+                const indicator = new THREE.Mesh(geometry, material);
+                indicator.position.copy(point);
+                this.scene.add(indicator);
+                this.inferenceLines.push(indicator);
+            }
+
+            clearInferenceLines() {
+                this.inferenceLines.forEach(obj => this.scene.remove(obj));
+                this.inferenceLines = [];
+            }
+
+            showInferenceTooltip(x, y, text, type) {
+                const tooltip = document.getElementById('inference-tooltip');
+                
+                // Add distance if we have points
+                if (this.drawingPoints.length > 0) {
+                    const lastPoint = this.drawingPoints[this.drawingPoints.length - 1];
+                    const currentPoint = this.getSnappedPoint();
+                    if (currentPoint) {
+                        const distance = lastPoint.distanceTo(currentPoint);
+                        text += ` (${distance.toFixed(2)}м)`;
+                    }
+                }
+                
+                tooltip.textContent = text;
+                tooltip.style.left = (x + 15) + 'px';
+                tooltip.style.top = (y + 15) + 'px';
+                tooltip.className = 'visible ' + type;
+            }
+
+            hideInferenceTooltip() {
+                const tooltip = document.getElementById('inference-tooltip');
+                tooltip.classList.remove('visible');
             }
 
             deleteSelected() {
